@@ -1,2 +1,7 @@
 .superpowers/
 .worktrees/
+frontend/dist/
+frontend/node_modules/
+.local-data/
+.pytest_cache/
+__pycache__/
