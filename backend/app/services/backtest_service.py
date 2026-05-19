@@ -6,8 +6,8 @@ import pandas as pd
 from backend.app.api.schemas import BacktestRequest
 from backend.app.backtest.engine import BacktestResult, run_equal_weight_backtest
 from backend.app.data.providers.free_provider import DEFAULT_POOLS, FreeMarketDataProvider
-from backend.app.domain.errors import StrategyValidationError
-from backend.app.domain.models import CostConfigModel, PoolType, StockPool
+from backend.app.domain.errors import BacktestRuntimeError, StrategyValidationError
+from backend.app.domain.models import CostConfigModel, PoolType, StockPool, StrategyTemplate
 from backend.app.strategies.builtins import get_strategy_templates
 
 
@@ -42,15 +42,23 @@ def run_backtest(request: BacktestRequest) -> dict:
     templates = {template.strategy_id: template for template in get_strategy_templates()}
     if request.strategy_id not in templates:
         raise StrategyValidationError("未知策略模板", {"strategy_id": request.strategy_id})
+    template = templates[request.strategy_id]
+    top_n = _validated_top_n(request.parameters, template)
 
     symbols = list(pools[request.pool_id].symbols)
     start_date = request.start_date.isoformat()
     end_date = request.end_date.isoformat()
     bars = FreeMarketDataProvider().load_daily_bars(symbols, start_date, end_date)
+    if bars.empty:
+        raise BacktestRuntimeError(
+            "没有可用行情数据",
+            {
+                "pool_id": request.pool_id,
+                "start_date": start_date,
+                "end_date": end_date,
+            },
+        )
     first_date = bars["trade_date"].min()
-    top_n = int(request.parameters.get("top_n", 2))
-    if top_n < 1:
-        raise StrategyValidationError("top_n 必须大于等于 1", {"top_n": top_n})
 
     selected = symbols[:top_n]
     target_weight = 1.0 / len(selected)
@@ -78,3 +86,29 @@ def serialize_result(run_id: str, result: BacktestResult) -> dict:
 
 def _records(frame: pd.DataFrame) -> list[dict]:
     return frame.astype(object).where(pd.notnull(frame), None).to_dict(orient="records")
+
+
+def _validated_top_n(parameters: dict, template: StrategyTemplate) -> int:
+    top_n_schema = template.parameter_schema.get("properties", {}).get("top_n", {})
+    default_top_n = template.default_parameters.get("top_n", top_n_schema.get("default", 2))
+    value = parameters.get("top_n", default_top_n)
+
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise StrategyValidationError(
+            "top_n 必须是整数",
+            {"top_n": value},
+        )
+
+    minimum = top_n_schema.get("minimum")
+    maximum = top_n_schema.get("maximum")
+    if minimum is not None and value < minimum:
+        raise StrategyValidationError(
+            "top_n 小于策略模板最小值",
+            {"top_n": value, "minimum": minimum},
+        )
+    if maximum is not None and value > maximum:
+        raise StrategyValidationError(
+            "top_n 大于策略模板最大值",
+            {"top_n": value, "maximum": maximum},
+        )
+    return value

@@ -1,5 +1,18 @@
 import pandas as pd
 
+DAILY_BAR_COLUMNS = [
+    "symbol",
+    "trade_date",
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "amount",
+    "frequency",
+    "source",
+]
+
 DEFAULT_POOLS = {
     "csi300": ["000001.SZ", "600000.SH", "000002.SZ"],
     "csi500": ["000905.SH", "600519.SH", "000858.SZ"],
@@ -28,7 +41,7 @@ def load_seed_daily_bars(symbols: list[str], start_date: str, end_date: str) -> 
                     "source": "seed",
                 }
             )
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows, columns=DAILY_BAR_COLUMNS)
 
 
 class FreeMarketDataProvider:
@@ -74,22 +87,7 @@ class FreeMarketDataProvider:
             frame["symbol"] = symbol
             frame["frequency"] = "1d"
             frame["source"] = "akshare"
-            rows.append(
-                frame[
-                    [
-                        "symbol",
-                        "trade_date",
-                        "open",
-                        "high",
-                        "low",
-                        "close",
-                        "volume",
-                        "amount",
-                        "frequency",
-                        "source",
-                    ]
-                ]
-            )
+            rows.append(frame[DAILY_BAR_COLUMNS])
         if not rows:
             return load_seed_daily_bars(symbols, start_date, end_date)
         return pd.concat(rows, ignore_index=True)

@@ -1,3 +1,7 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
@@ -8,11 +12,20 @@ from backend.app.storage.database import create_connection, initialize_schema
 from backend.app.storage.repository import QuantRepository
 
 
-def create_app() -> FastAPI:
-    app = FastAPI(title="A Share Quant Lab", version="0.1.0")
-    connection = create_connection(settings.duckdb_path)
-    initialize_schema(connection)
-    app.state.repository = QuantRepository(connection)
+def create_app(duckdb_path: str | Path | None = None) -> FastAPI:
+    database_path = duckdb_path or settings.duckdb_path
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        connection = create_connection(database_path)
+        initialize_schema(connection)
+        app.state.repository = QuantRepository(connection)
+        try:
+            yield
+        finally:
+            connection.close()
+
+    app = FastAPI(title="A Share Quant Lab", version="0.1.0", lifespan=lifespan)
 
     @app.exception_handler(QuantLabError)
     def handle_quant_lab_error(_, exc: QuantLabError) -> JSONResponse:

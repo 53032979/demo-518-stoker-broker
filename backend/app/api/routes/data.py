@@ -4,6 +4,7 @@ import pandas as pd
 from fastapi import APIRouter, File, Request, UploadFile
 
 from backend.app.data.validators import normalize_daily_bars
+from backend.app.domain.errors import DataValidationError
 
 router = APIRouter(prefix="/data", tags=["data"])
 
@@ -16,10 +17,16 @@ def coverage() -> dict:
 @router.post("/uploads")
 async def upload_daily_bars(request: Request, file: UploadFile = File(...)) -> dict:
     payload = await file.read()
-    if file.filename and file.filename.endswith(".parquet"):
-        raw = pd.read_parquet(BytesIO(payload))
-    else:
-        raw = pd.read_csv(BytesIO(payload))
+    try:
+        if file.filename and file.filename.endswith(".parquet"):
+            raw = pd.read_parquet(BytesIO(payload))
+        else:
+            raw = pd.read_csv(BytesIO(payload))
+    except Exception as exc:
+        raise DataValidationError(
+            "无法读取上传文件",
+            {"filename": file.filename or "upload"},
+        ) from exc
 
     normalized = normalize_daily_bars(raw, source=file.filename or "upload")
     request.app.state.repository.upsert_daily_bars(normalized)
