@@ -1,7 +1,11 @@
 from backend.app.domain.models import StrategyTemplate
 
 
-def _schema(title: str, extra_properties: dict | None = None) -> dict:
+def _schema(
+    title: str,
+    extra_properties: dict | None = None,
+    weighting_default: str = "equal",
+) -> dict:
     properties = {
         "top_n": {"type": "integer", "minimum": 1, "maximum": 500, "default": 20},
         "rebalance": {
@@ -9,7 +13,11 @@ def _schema(title: str, extra_properties: dict | None = None) -> dict:
             "enum": ["weekly", "monthly", "quarterly"],
             "default": "monthly",
         },
-        "weighting": {"type": "string", "enum": ["equal", "factor_score"], "default": "equal"},
+        "weighting": {
+            "type": "string",
+            "enum": ["equal", "factor_score"],
+            "default": weighting_default,
+        },
         "stop_loss": {"type": "number", "minimum": 0, "maximum": 0.8, "default": 0.0},
         "take_profit": {"type": "number", "minimum": 0, "maximum": 5.0, "default": 0.0},
     }
@@ -115,6 +123,7 @@ def get_strategy_templates() -> list[StrategyTemplate]:
                         },
                     }
                 },
+                weighting_default="factor_score",
             ),
             default_parameters={
                 "top_n": 20,

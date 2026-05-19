@@ -1,7 +1,15 @@
+from collections.abc import Mapping
+
 import pandas as pd
 
 from backend.app.strategies.builtins import get_strategy_templates
 from backend.app.strategies.scoring import rank_factor, select_top_n
+
+
+def _plain(value):
+    if isinstance(value, Mapping):
+        return {key: _plain(item) for key, item in value.items()}
+    return value
 
 
 def test_registry_contains_five_templates():
@@ -24,6 +32,18 @@ def test_default_parameters_are_declared_in_schema_properties():
         properties = template.parameter_schema["properties"]
 
         assert set(template.default_parameters) <= set(properties), template.strategy_id
+
+
+def test_schema_defaults_match_default_parameters():
+    for template in get_strategy_templates():
+        properties = template.parameter_schema["properties"]
+        for key, expected_default in template.default_parameters.items():
+            if "default" not in properties[key]:
+                continue
+
+            assert _plain(properties[key]["default"]) == _plain(
+                expected_default
+            ), f"{template.strategy_id}.{key}"
 
 
 def test_rank_factor_supports_descending_and_missing_values():
