@@ -12,24 +12,26 @@ class QuantRepository:
 
     def upsert_daily_bars(self, bars: pd.DataFrame) -> None:
         self.connection.register("incoming_daily_bars", bars)
-        self.connection.execute(
-            """
-            INSERT OR REPLACE INTO daily_bars
-            SELECT
-              symbol,
-              CAST(trade_date AS DATE),
-              open,
-              high,
-              low,
-              close,
-              volume,
-              amount,
-              frequency,
-              source
-            FROM incoming_daily_bars
-            """
-        )
-        self.connection.unregister("incoming_daily_bars")
+        try:
+            self.connection.execute(
+                """
+                INSERT OR REPLACE INTO daily_bars
+                SELECT
+                  symbol,
+                  CAST(trade_date AS DATE),
+                  open,
+                  high,
+                  low,
+                  close,
+                  volume,
+                  amount,
+                  frequency,
+                  source
+                FROM incoming_daily_bars
+                """
+            )
+        finally:
+            self.connection.unregister("incoming_daily_bars")
 
     def load_daily_bars(self, symbols: list[str], start_date: str, end_date: str) -> pd.DataFrame:
         if not symbols:

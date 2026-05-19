@@ -39,6 +39,15 @@ def test_normalize_daily_bars_accepts_required_columns():
     assert result.loc[0, "frequency"] == "1d"
 
 
+@pytest.mark.parametrize("trade_date", [20240102, "20240102"])
+def test_normalize_daily_bars_accepts_compact_yyyymmdd_trade_dates(trade_date):
+    raw = pd.DataFrame([_valid_bar(trade_date=trade_date)])
+
+    result = normalize_daily_bars(raw, source="unit")
+
+    assert result.loc[0, "trade_date"] == "2024-01-02"
+
+
 def test_normalize_daily_bars_rejects_missing_required_columns():
     raw = pd.DataFrame([{key: value for key, value in _valid_bar().items() if key != "amount"}])
 

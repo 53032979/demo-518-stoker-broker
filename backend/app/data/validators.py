@@ -25,9 +25,15 @@ def normalize_daily_bars(raw: pd.DataFrame, source: str) -> pd.DataFrame:
         raise DataValidationError("证券代码为空", {"column": "symbol"})
 
     frame["symbol"] = frame["symbol"].astype(str).str.strip().str.upper()
-    frame["trade_date"] = pd.to_datetime(frame["trade_date"], errors="coerce").dt.strftime(
-        "%Y-%m-%d"
+    trade_date_text = frame["trade_date"].astype("string").str.strip()
+    parsed_trade_dates = pd.to_datetime(trade_date_text, errors="coerce")
+    compact_trade_dates = trade_date_text.str.fullmatch(r"\d{8}", na=False)
+    parsed_trade_dates.loc[compact_trade_dates] = pd.to_datetime(
+        trade_date_text.loc[compact_trade_dates],
+        format="%Y%m%d",
+        errors="coerce",
     )
+    frame["trade_date"] = parsed_trade_dates.dt.strftime("%Y-%m-%d")
 
     numeric_columns = ["open", "high", "low", "close", "volume", "amount"]
     for column in numeric_columns:

@@ -1,4 +1,6 @@
+import duckdb
 import pandas as pd
+import pytest
 
 from backend.app.domain.models import PoolType, StockPool
 from backend.app.storage.database import create_connection, initialize_schema
@@ -31,6 +33,34 @@ def test_repository_round_trips_daily_bars(tmp_path):
 
     assert len(result) == 1
     assert result.loc[0, "symbol"] == "000001.SZ"
+
+
+def test_upsert_daily_bars_unregisters_relation_after_insert_failure(tmp_path):
+    connection = create_connection(tmp_path / "test.duckdb")
+    initialize_schema(connection)
+    repo = QuantRepository(connection)
+    bars = pd.DataFrame(
+        [
+            {
+                "symbol": "000001.SZ",
+                "trade_date": "not-a-date",
+                "open": 10.0,
+                "high": 11.0,
+                "low": 9.5,
+                "close": 10.5,
+                "volume": 100000,
+                "amount": 1050000,
+                "frequency": "1d",
+                "source": "unit",
+            }
+        ]
+    )
+
+    with pytest.raises(duckdb.Error):
+        repo.upsert_daily_bars(bars)
+
+    with pytest.raises(duckdb.CatalogException):
+        connection.execute("SELECT * FROM incoming_daily_bars").fetchall()
 
 
 def test_repository_round_trips_stock_pools(tmp_path):
