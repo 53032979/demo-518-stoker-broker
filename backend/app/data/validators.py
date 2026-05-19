@@ -21,6 +21,9 @@ def normalize_daily_bars(raw: pd.DataFrame, source: str) -> pd.DataFrame:
         raise DataValidationError("缺少日线行情字段", {"missing": missing})
 
     frame = raw[REQUIRED_DAILY_COLUMNS].copy()
+    if frame["symbol"].isna().any():
+        raise DataValidationError("证券代码为空", {"column": "symbol"})
+
     frame["symbol"] = frame["symbol"].astype(str).str.strip().str.upper()
     frame["trade_date"] = pd.to_datetime(frame["trade_date"], errors="coerce").dt.strftime(
         "%Y-%m-%d"
