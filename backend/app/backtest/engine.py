@@ -6,6 +6,19 @@ from backend.app.backtest.broker import calculate_costs, round_to_lot
 from backend.app.backtest.metrics import calculate_metrics
 from backend.app.domain.models import BacktestMetrics, CostConfigModel
 
+TRADE_COLUMNS = [
+    "trade_date",
+    "symbol",
+    "side",
+    "price",
+    "quantity",
+    "gross_amount",
+    "costs",
+    "net_amount",
+    "pnl",
+    "reason",
+]
+
 
 @dataclass(frozen=True)
 class BacktestResult:
@@ -16,6 +29,30 @@ class BacktestResult:
     metrics: BacktestMetrics
 
 
+def _buy_quantity_for_budget(
+    price: float,
+    budget: float,
+    cash: float,
+    costs: CostConfigModel,
+) -> int:
+    budget = min(budget, cash)
+    quantity = round_to_lot(budget / price, costs.min_lot_size)
+    while quantity > 0:
+        gross = price * quantity
+        fee = calculate_costs("buy", price, quantity, costs)
+        if gross + fee <= budget and gross + fee <= cash:
+            return quantity
+        quantity -= costs.min_lot_size
+    return 0
+
+
+def _target_weights(targets: pd.DataFrame) -> dict[str, float]:
+    return {
+        str(target["symbol"]): float(target["target_weight"])
+        for _, target in targets.iterrows()
+    }
+
+
 def run_equal_weight_backtest(
     bars: pd.DataFrame,
     targets_by_date: dict[str, pd.DataFrame],
@@ -24,6 +61,7 @@ def run_equal_weight_backtest(
 ) -> BacktestResult:
     cash = initial_cash
     holdings: dict[str, int] = {}
+    average_costs: dict[str, float] = {}
     trade_rows: list[dict] = []
     position_rows: list[dict] = []
     equity_rows: list[dict] = []
@@ -34,52 +72,91 @@ def run_equal_weight_backtest(
     for trade_date, day_bars in ordered.groupby("trade_date"):
         price_map = dict(zip(day_bars["symbol"], day_bars["close"]))
         if trade_date in targets_by_date:
-            targets = targets_by_date[trade_date]
+            target_weights = _target_weights(targets_by_date[trade_date])
             account_value = cash + sum(
                 quantity * price_map.get(symbol, previous_prices.get(symbol, 0.0))
                 for symbol, quantity in holdings.items()
             )
-            for _, target in targets.iterrows():
-                symbol = target["symbol"]
+            symbols = sorted(set(holdings) | set(target_weights))
+            tradable_symbols = []
+            for symbol in symbols:
+                if symbol not in price_map:
+                    logs.append(f"{trade_date} {symbol} skipped: missing price")
+                    continue
+                tradable_symbols.append(symbol)
+
+            for symbol in tradable_symbols:
                 price = float(price_map[symbol])
-                target_value = account_value * float(target["target_weight"])
                 current_quantity = holdings.get(symbol, 0)
+                target_value = account_value * target_weights.get(symbol, 0.0)
                 current_value = current_quantity * price
                 delta_value = target_value - current_value
-                side = "buy" if delta_value > 0 else "sell"
-                quantity = round_to_lot(abs(delta_value) / price, costs.min_lot_size)
+                if delta_value >= 0:
+                    continue
+                quantity = min(
+                    round_to_lot(abs(delta_value) / price, costs.min_lot_size),
+                    current_quantity,
+                )
                 if quantity == 0:
                     continue
-                fee = calculate_costs(side, price, quantity, costs)
                 gross = price * quantity
-                if side == "buy" and cash < gross + fee:
-                    logs.append(f"{trade_date} {symbol} buy skipped: insufficient cash")
-                    continue
-                if side == "sell":
-                    quantity = min(quantity, current_quantity)
-                    gross = price * quantity
-                    fee = calculate_costs(side, price, quantity, costs)
-                if quantity == 0:
-                    continue
-                if side == "buy":
-                    holdings[symbol] = current_quantity + quantity
-                    cash -= gross + fee
-                    net_amount = -(gross + fee)
+                fee = calculate_costs("sell", price, quantity, costs)
+                net_amount = gross - fee
+                pnl = net_amount - average_costs.get(symbol, price) * quantity
+                cash += net_amount
+                remaining_quantity = current_quantity - quantity
+                if remaining_quantity > 0:
+                    holdings[symbol] = remaining_quantity
                 else:
-                    holdings[symbol] = current_quantity - quantity
-                    cash += gross - fee
-                    net_amount = gross - fee
+                    holdings.pop(symbol, None)
+                    average_costs.pop(symbol, None)
                 trade_rows.append(
                     {
                         "trade_date": trade_date,
                         "symbol": symbol,
-                        "side": side,
+                        "side": "sell",
                         "price": price,
                         "quantity": quantity,
                         "gross_amount": gross,
                         "costs": fee,
                         "net_amount": net_amount,
-                        "pnl": 0.0,
+                        "pnl": pnl,
+                        "reason": "rebalance",
+                    }
+                )
+
+            for symbol in tradable_symbols:
+                price = float(price_map[symbol])
+                current_quantity = holdings.get(symbol, 0)
+                target_value = account_value * target_weights.get(symbol, 0.0)
+                current_value = current_quantity * price
+                delta_value = target_value - current_value
+                if delta_value <= 0:
+                    continue
+                quantity = _buy_quantity_for_budget(price, delta_value, cash, costs)
+                if quantity == 0:
+                    logs.append(f"{trade_date} {symbol} buy skipped: insufficient cash")
+                    continue
+                gross = price * quantity
+                fee = calculate_costs("buy", price, quantity, costs)
+                net_amount = -(gross + fee)
+                previous_quantity = current_quantity
+                new_quantity = previous_quantity + quantity
+                previous_cost = average_costs.get(symbol, 0.0) * previous_quantity
+                average_costs[symbol] = (previous_cost + gross + fee) / new_quantity
+                holdings[symbol] = new_quantity
+                cash += net_amount
+                trade_rows.append(
+                    {
+                        "trade_date": trade_date,
+                        "symbol": symbol,
+                        "side": "buy",
+                        "price": price,
+                        "quantity": quantity,
+                        "gross_amount": gross,
+                        "costs": fee,
+                        "net_amount": net_amount,
+                        "pnl": None,
                         "reason": "rebalance",
                     }
                 )
@@ -109,8 +186,8 @@ def run_equal_weight_backtest(
 
     equity_curve = pd.DataFrame(equity_rows)
     positions = pd.DataFrame(position_rows)
-    trades = pd.DataFrame(trade_rows)
-    metrics = calculate_metrics(equity_curve, trades)
+    trades = pd.DataFrame(trade_rows, columns=TRADE_COLUMNS)
+    metrics = calculate_metrics(equity_curve, trades, initial_capital=initial_cash)
     return BacktestResult(
         equity_curve=equity_curve,
         positions=positions,
