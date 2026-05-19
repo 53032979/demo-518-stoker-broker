@@ -164,3 +164,14 @@ def test_data_upload_endpoint_rejects_wrong_file_field(tmp_path):
 
         assert response.status_code == 400
         assert response.json()["code"] == "data_validation_error"
+
+
+def test_data_upload_endpoint_rejects_non_file_upload_field(tmp_path):
+    with TestClient(create_app(tmp_path / "test.duckdb")) as client:
+        response = client.post(
+            "/data/uploads",
+            files={"file": (None, "abc")},
+        )
+
+        assert response.status_code == 400
+        assert response.json()["code"] == "data_validation_error"

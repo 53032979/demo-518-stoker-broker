@@ -1,7 +1,8 @@
 from io import BytesIO
 
 import pandas as pd
-from fastapi import APIRouter, File, Request, UploadFile
+from fastapi import APIRouter, Request
+from starlette.datastructures import UploadFile
 
 from backend.app.data.validators import normalize_daily_bars
 from backend.app.domain.errors import DataValidationError
@@ -15,8 +16,14 @@ def coverage() -> dict:
 
 
 @router.post("/uploads")
-async def upload_daily_bars(request: Request, file: UploadFile | None = File(None)) -> dict:
-    if file is None:
+async def upload_daily_bars(request: Request) -> dict:
+    try:
+        form = await request.form()
+    except Exception as exc:
+        raise DataValidationError("无法读取上传表单", {}) from exc
+
+    file = form.get("file")
+    if not isinstance(file, UploadFile):
         raise DataValidationError("缺少上传文件", {"field": "file"})
 
     payload = await file.read()
