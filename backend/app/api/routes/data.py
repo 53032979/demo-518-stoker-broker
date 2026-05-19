@@ -1,0 +1,32 @@
+from io import BytesIO
+
+import pandas as pd
+from fastapi import APIRouter, File, Request, UploadFile
+
+from backend.app.data.validators import normalize_daily_bars
+
+router = APIRouter(prefix="/data", tags=["data"])
+
+
+@router.get("/coverage")
+def coverage() -> dict:
+    return {"sources": ["seed"], "frequency": "1d"}
+
+
+@router.post("/uploads")
+async def upload_daily_bars(request: Request, file: UploadFile = File(...)) -> dict:
+    payload = await file.read()
+    if file.filename and file.filename.endswith(".parquet"):
+        raw = pd.read_parquet(BytesIO(payload))
+    else:
+        raw = pd.read_csv(BytesIO(payload))
+
+    normalized = normalize_daily_bars(raw, source=file.filename or "upload")
+    request.app.state.repository.upsert_daily_bars(normalized)
+    return {
+        "status": "validated",
+        "rows": int(len(normalized)),
+        "symbols": int(normalized["symbol"].nunique()),
+        "start_date": str(normalized["trade_date"].min()),
+        "end_date": str(normalized["trade_date"].max()),
+    }
