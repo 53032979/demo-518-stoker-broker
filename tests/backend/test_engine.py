@@ -91,8 +91,8 @@ def test_rebalance_liquidates_omitted_symbols_and_removes_zero_holding():
         [
             _bar("A", "2024-01-01", 10),
             _bar("B", "2024-01-01", 20),
-            _bar("A", "2024-01-02", 12),
-            _bar("B", "2024-01-02", 18),
+            _bar("A", "2024-01-02", 10.5),
+            _bar("B", "2024-01-02", 19),
         ]
     )
     day_one = pd.DataFrame({"symbol": ["A", "B"], "target_weight": [0.5, 0.5]})
@@ -110,11 +110,11 @@ def test_rebalance_liquidates_omitted_symbols_and_removes_zero_holding():
 
     assert day_two_trades["side"].tolist() == ["sell", "buy"]
     assert day_two_trades["symbol"].tolist() == ["B", "A"]
-    assert day_two_trades["quantity"].tolist() == [2500, 3700]
+    assert day_two_trades["quantity"].tolist() == [2500, 4500]
     assert day_two_positions["symbol"].tolist() == ["A"]
-    assert day_two_positions.iloc[0]["quantity"] == 8700
-    assert result.equity_curve.iloc[-1]["cash"] == 600.0
-    assert result.equity_curve.iloc[-1]["market_value"] == 104400.0
+    assert day_two_positions.iloc[0]["quantity"] == 9500
+    assert result.equity_curve.iloc[-1]["cash"] == 250.0
+    assert result.equity_curve.iloc[-1]["market_value"] == 99750.0
 
 
 def test_missing_target_price_logs_and_skips_symbol():
@@ -154,3 +154,50 @@ def test_sell_trade_records_realized_pnl_and_win_rate():
     assert sell["quantity"] == 10000
     assert sell["pnl"] == 20000.0
     assert result.metrics.win_rate == 1.0
+
+
+def test_limit_up_buy_is_blocked_after_previous_close():
+    bars = pd.DataFrame(
+        [
+            _bar("A", "2024-01-01", 10),
+            _bar("A", "2024-01-02", 11),
+        ]
+    )
+    entry = pd.DataFrame({"symbol": ["A"], "target_weight": [1.0]})
+
+    result = run_equal_weight_backtest(
+        bars=bars,
+        targets_by_date={"2024-01-02": entry},
+        initial_cash=100000.0,
+        costs=CostConfigModel(commission_rate=0, stamp_tax_rate=0, slippage_bps=0),
+    )
+
+    assert result.trades.empty
+    assert result.equity_curve["cash"].tolist() == [100000.0, 100000.0]
+    assert result.logs == ["2024-01-02 A buy skipped: limit up"]
+
+
+def test_limit_down_sell_is_blocked_after_previous_close():
+    bars = pd.DataFrame(
+        [
+            _bar("A", "2024-01-01", 10),
+            _bar("A", "2024-01-02", 9),
+        ]
+    )
+    entry = pd.DataFrame({"symbol": ["A"], "target_weight": [1.0]})
+    exit_all = pd.DataFrame({"symbol": [], "target_weight": []})
+
+    result = run_equal_weight_backtest(
+        bars=bars,
+        targets_by_date={"2024-01-01": entry, "2024-01-02": exit_all},
+        initial_cash=100000.0,
+        costs=CostConfigModel(commission_rate=0, stamp_tax_rate=0, slippage_bps=0),
+    )
+
+    assert result.trades["side"].tolist() == ["buy"]
+    assert result.positions[result.positions["trade_date"] == "2024-01-02"].iloc[0][
+        "quantity"
+    ] == 10000
+    assert result.equity_curve.iloc[-1]["cash"] == 0.0
+    assert result.equity_curve.iloc[-1]["market_value"] == 90000.0
+    assert result.logs == ["2024-01-02 A sell skipped: limit down"]

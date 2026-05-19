@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from backend.app.backtest.broker import calculate_costs, round_to_lot
+from backend.app.backtest.broker import calculate_costs, can_trade_at_limit, round_to_lot
 from backend.app.backtest.metrics import calculate_metrics
 from backend.app.domain.models import BacktestMetrics, CostConfigModel
 
@@ -93,6 +93,12 @@ def run_equal_weight_backtest(
                 delta_value = target_value - current_value
                 if delta_value >= 0:
                     continue
+                previous_close = previous_prices.get(symbol)
+                if previous_close is not None and not can_trade_at_limit(
+                    "sell", price, previous_close
+                ):
+                    logs.append(f"{trade_date} {symbol} sell skipped: limit down")
+                    continue
                 quantity = min(
                     round_to_lot(abs(delta_value) / price, costs.min_lot_size),
                     current_quantity,
@@ -132,6 +138,12 @@ def run_equal_weight_backtest(
                 current_value = current_quantity * price
                 delta_value = target_value - current_value
                 if delta_value <= 0:
+                    continue
+                previous_close = previous_prices.get(symbol)
+                if previous_close is not None and not can_trade_at_limit(
+                    "buy", price, previous_close
+                ):
+                    logs.append(f"{trade_date} {symbol} buy skipped: limit up")
                     continue
                 quantity = _buy_quantity_for_budget(price, delta_value, cash, costs)
                 if quantity == 0:
@@ -183,6 +195,8 @@ def run_equal_weight_backtest(
                 "market_value": market_value,
             }
         )
+        for symbol, price in price_map.items():
+            previous_prices[symbol] = float(price)
 
     equity_curve = pd.DataFrame(equity_rows)
     positions = pd.DataFrame(position_rows)
