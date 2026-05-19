@@ -46,6 +46,12 @@ def run_backtest(request: BacktestRequest) -> dict:
     top_n = _validated_top_n(request.parameters, template)
 
     symbols = list(pools[request.pool_id].symbols)
+    if top_n > len(symbols):
+        raise StrategyValidationError(
+            "top_n 大于股票池数量",
+            {"top_n": top_n, "pool_size": len(symbols), "pool_id": request.pool_id},
+        )
+
     start_date = request.start_date.isoformat()
     end_date = request.end_date.isoformat()
     bars = FreeMarketDataProvider().load_daily_bars(symbols, start_date, end_date)

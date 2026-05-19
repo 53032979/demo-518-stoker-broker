@@ -18,9 +18,9 @@ def create_app(duckdb_path: str | Path | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         connection = create_connection(database_path)
-        initialize_schema(connection)
-        app.state.repository = QuantRepository(connection)
         try:
+            initialize_schema(connection)
+            app.state.repository = QuantRepository(connection)
             yield
         finally:
             connection.close()

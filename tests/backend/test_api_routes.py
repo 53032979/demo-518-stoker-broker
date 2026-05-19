@@ -60,6 +60,19 @@ def test_backtest_endpoint_returns_completed_result_for_seed_data(tmp_path):
         assert payload["result"]["equity_curve"]
 
 
+def test_default_pool_supports_default_top_n_backtest(tmp_path):
+    with TestClient(create_app(tmp_path / "test.duckdb")) as client:
+        pools_response = client.get("/pools")
+        csi300 = next(pool for pool in pools_response.json() if pool["pool_id"] == "csi300")
+
+        assert len(csi300["symbols"]) >= 20
+
+        response = client.post("/backtests", json=_backtest_payload({}))
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "completed"
+
+
 def test_data_upload_endpoint_validates_and_persists_csv(tmp_path):
     csv_bytes = (
         "symbol,trade_date,open,high,low,close,volume,amount\n"
@@ -101,6 +114,17 @@ def test_backtest_endpoint_rejects_invalid_top_n(tmp_path, top_n):
         response = client.post(
             "/backtests",
             json=_backtest_payload({"top_n": top_n, "rebalance": "monthly", "weighting": "equal"}),
+        )
+
+        assert response.status_code == 400
+        assert response.json()["code"] == "strategy_validation_error"
+
+
+def test_backtest_endpoint_rejects_top_n_larger_than_pool_size(tmp_path):
+    with TestClient(create_app(tmp_path / "test.duckdb")) as client:
+        response = client.post(
+            "/backtests",
+            json=_backtest_payload({"top_n": 21, "rebalance": "monthly", "weighting": "equal"}),
         )
 
         assert response.status_code == 400
