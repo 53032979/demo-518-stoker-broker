@@ -39,6 +39,15 @@ def test_normalize_daily_bars_accepts_required_columns():
     assert result.loc[0, "frequency"] == "1d"
 
 
+def test_normalize_daily_bars_allows_zero_volume_and_amount():
+    raw = pd.DataFrame([_valid_bar(volume=0, amount=0)])
+
+    result = normalize_daily_bars(raw, source="unit")
+
+    assert result.loc[0, "volume"] == 0
+    assert result.loc[0, "amount"] == 0
+
+
 @pytest.mark.parametrize("trade_date", [20240102, "20240102"])
 def test_normalize_daily_bars_accepts_compact_yyyymmdd_trade_dates(trade_date):
     raw = pd.DataFrame([_valid_bar(trade_date=trade_date)])
@@ -114,6 +123,14 @@ def test_normalize_daily_bars_rejects_non_finite_numeric_fields(column, value):
     raw = pd.DataFrame([_valid_bar(**{column: value})])
 
     with pytest.raises(DataValidationError, match="数值字段包含空值或非法值"):
+        normalize_daily_bars(raw, source="unit")
+
+
+@pytest.mark.parametrize("column", ["volume", "amount"])
+def test_normalize_daily_bars_rejects_negative_volume_or_amount(column):
+    raw = pd.DataFrame([_valid_bar(**{column: -1})])
+
+    with pytest.raises(DataValidationError, match="成交量和成交额不能为负"):
         normalize_daily_bars(raw, source="unit")
 
 

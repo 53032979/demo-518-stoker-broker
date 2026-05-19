@@ -52,6 +52,8 @@ def normalize_daily_bars(raw: pd.DataFrame, source: str) -> pd.DataFrame:
         frame[numeric_columns].to_numpy()
     ).all():
         raise DataValidationError("数值字段包含空值或非法值", {"columns": numeric_columns})
+    if (frame[["volume", "amount"]] < 0).any().any():
+        raise DataValidationError("成交量和成交额不能为负", {"columns": ["volume", "amount"]})
     if (frame[["open", "high", "low", "close"]] <= 0).any().any():
         raise DataValidationError("价格必须大于 0", {})
     if (frame["high"] < frame[["open", "low", "close"]].max(axis=1)).any():
