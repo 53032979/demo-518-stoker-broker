@@ -1,6 +1,8 @@
-from collections.abc import AsyncIterator
+import math
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
@@ -10,6 +12,18 @@ from backend.app.config import settings
 from backend.app.domain.errors import QuantLabError
 from backend.app.storage.database import create_connection, initialize_schema
 from backend.app.storage.repository import QuantRepository
+
+
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value)
+    if isinstance(value, Mapping):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, set | frozenset):
+        return [_json_safe(item) for item in sorted(value, key=str)]
+    return value
 
 
 def create_app(duckdb_path: str | Path | None = None) -> FastAPI:
@@ -31,7 +45,11 @@ def create_app(duckdb_path: str | Path | None = None) -> FastAPI:
     def handle_quant_lab_error(_, exc: QuantLabError) -> JSONResponse:
         return JSONResponse(
             status_code=400,
-            content={"code": exc.code, "message": str(exc), "details": exc.details},
+            content={
+                "code": exc.code,
+                "message": str(exc),
+                "details": _json_safe(exc.details),
+            },
         )
 
     @app.get("/health")

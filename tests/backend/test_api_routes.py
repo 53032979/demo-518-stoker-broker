@@ -4,10 +4,10 @@ from fastapi.testclient import TestClient
 from backend.app.main import create_app
 
 
-def _backtest_payload(parameters: dict | None = None) -> dict:
+def _backtest_payload(parameters: dict | None = None, pool_id: str = "csi300") -> dict:
     return {
         "strategy_id": "momentum_top_n",
-        "pool_id": "csi300",
+        "pool_id": pool_id,
         "start_date": "2024-01-01",
         "end_date": "2024-01-10",
         "parameters": parameters
@@ -60,14 +60,15 @@ def test_backtest_endpoint_returns_completed_result_for_seed_data(tmp_path):
         assert payload["result"]["equity_curve"]
 
 
-def test_default_pool_supports_default_top_n_backtest(tmp_path):
+@pytest.mark.parametrize("pool_id", ["csi300", "csi500", "csi1000"])
+def test_default_pool_supports_default_top_n_backtest(tmp_path, pool_id):
     with TestClient(create_app(tmp_path / "test.duckdb")) as client:
         pools_response = client.get("/pools")
-        csi300 = next(pool for pool in pools_response.json() if pool["pool_id"] == "csi300")
+        pool = next(pool for pool in pools_response.json() if pool["pool_id"] == pool_id)
 
-        assert len(csi300["symbols"]) >= 20
+        assert len(pool["symbols"]) >= 20
 
-        response = client.post("/backtests", json=_backtest_payload({}))
+        response = client.post("/backtests", json=_backtest_payload({}, pool_id=pool_id))
 
         assert response.status_code == 200
         assert response.json()["status"] == "completed"
@@ -129,6 +130,38 @@ def test_backtest_endpoint_rejects_top_n_larger_than_pool_size(tmp_path):
 
         assert response.status_code == 400
         assert response.json()["code"] == "strategy_validation_error"
+
+
+def test_backtest_endpoint_rejects_non_finite_raw_top_n(tmp_path):
+    raw_payload = """
+    {
+      "strategy_id": "momentum_top_n",
+      "pool_id": "csi300",
+      "start_date": "2024-01-01",
+      "end_date": "2024-01-10",
+      "parameters": {"top_n": 1e999, "rebalance": "monthly", "weighting": "equal"},
+      "costs": {
+        "commission_rate": 0,
+        "stamp_tax_rate": 0,
+        "slippage_bps": 0,
+        "min_lot_size": 100
+      }
+    }
+    """
+    with TestClient(
+        create_app(tmp_path / "test.duckdb"),
+        raise_server_exceptions=False,
+    ) as client:
+        response = client.post(
+            "/backtests",
+            content=raw_payload,
+            headers={"content-type": "application/json"},
+        )
+
+        assert response.status_code == 400
+        payload = response.json()
+        assert payload["code"] == "strategy_validation_error"
+        assert payload["details"]["top_n"] == "inf"
 
 
 def test_backtest_endpoint_rejects_weekend_only_seed_range(tmp_path):
