@@ -15,7 +15,10 @@ def coverage() -> dict:
 
 
 @router.post("/uploads")
-async def upload_daily_bars(request: Request, file: UploadFile = File(...)) -> dict:
+async def upload_daily_bars(request: Request, file: UploadFile | None = File(None)) -> dict:
+    if file is None:
+        raise DataValidationError("缺少上传文件", {"field": "file"})
+
     payload = await file.read()
     try:
         if file.filename and file.filename.endswith(".parquet"):

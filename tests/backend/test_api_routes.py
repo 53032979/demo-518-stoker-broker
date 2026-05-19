@@ -11,7 +11,8 @@ def _backtest_payload(parameters: dict | None = None) -> dict:
         "start_date": "2024-01-01",
         "end_date": "2024-01-10",
         "parameters": parameters
-        or {"top_n": 2, "rebalance": "monthly", "weighting": "equal"},
+        if parameters is not None
+        else {"top_n": 2, "rebalance": "monthly", "weighting": "equal"},
         "costs": {
             "commission_rate": 0,
             "stamp_tax_rate": 0,
@@ -122,6 +123,43 @@ def test_data_upload_endpoint_rejects_invalid_csv(tmp_path):
         response = client.post(
             "/data/uploads",
             files={"file": ("daily.csv", b'not,"valid\ncsv', "text/csv")},
+        )
+
+        assert response.status_code == 400
+        assert response.json()["code"] == "data_validation_error"
+
+
+def test_data_upload_endpoint_rejects_header_only_csv(tmp_path):
+    csv_bytes = "symbol,trade_date,open,high,low,close,volume,amount\n".encode("utf-8")
+
+    with TestClient(create_app(tmp_path / "test.duckdb")) as client:
+        response = client.post(
+            "/data/uploads",
+            files={"file": ("daily.csv", csv_bytes, "text/csv")},
+        )
+
+        assert response.status_code == 400
+        assert response.json()["code"] == "data_validation_error"
+
+
+def test_data_upload_endpoint_rejects_missing_file(tmp_path):
+    with TestClient(create_app(tmp_path / "test.duckdb")) as client:
+        response = client.post("/data/uploads")
+
+        assert response.status_code == 400
+        assert response.json()["code"] == "data_validation_error"
+
+
+def test_data_upload_endpoint_rejects_wrong_file_field(tmp_path):
+    csv_bytes = (
+        "symbol,trade_date,open,high,low,close,volume,amount\n"
+        "000001.SZ,2024-01-02,10,11,9.5,10.5,100000,1050000\n"
+    ).encode("utf-8")
+
+    with TestClient(create_app(tmp_path / "test.duckdb")) as client:
+        response = client.post(
+            "/data/uploads",
+            files={"wrong": ("daily.csv", csv_bytes, "text/csv")},
         )
 
         assert response.status_code == 400

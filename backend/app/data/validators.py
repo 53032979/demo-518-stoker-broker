@@ -20,6 +20,8 @@ def normalize_daily_bars(raw: pd.DataFrame, source: str) -> pd.DataFrame:
     missing = [column for column in REQUIRED_DAILY_COLUMNS if column not in raw.columns]
     if missing:
         raise DataValidationError("缺少日线行情字段", {"missing": missing})
+    if raw.empty:
+        raise DataValidationError("日线行情数据为空", {})
 
     frame = raw[REQUIRED_DAILY_COLUMNS].copy()
     if frame["symbol"].isna().any():
