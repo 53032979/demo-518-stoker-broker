@@ -15,4 +15,3 @@ class StrategyRunner(Protocol):
         parameters: dict[str, Any],
     ) -> pd.DataFrame:
         """Return columns: symbol, target_weight."""
-
