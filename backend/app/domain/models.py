@@ -1,6 +1,22 @@
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Any
+
+
+def _freeze_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return MappingProxyType({key: _freeze_value(item) for key, item in value.items()})
+    if isinstance(value, list | tuple):
+        return tuple(_freeze_value(item) for item in value)
+    if isinstance(value, set | frozenset):
+        return frozenset(_freeze_value(item) for item in value)
+    return value
+
+
+def _freeze_mapping(value: Mapping[str, Any]) -> Mapping[str, Any]:
+    return MappingProxyType({key: _freeze_value(item) for key, item in value.items()})
 
 
 class Frequency(StrEnum):
@@ -31,7 +47,10 @@ class StockPool:
     pool_id: str
     name: str
     pool_type: PoolType
-    symbols: list[str]
+    symbols: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "symbols", tuple(self.symbols))
 
 
 @dataclass(frozen=True)
@@ -40,9 +59,14 @@ class StrategyTemplate:
     name: str
     category: str
     description: str
-    parameter_schema: dict[str, Any]
-    default_parameters: dict[str, Any]
-    required_fields: list[str] = field(default_factory=list)
+    parameter_schema: Mapping[str, Any]
+    default_parameters: Mapping[str, Any]
+    required_fields: tuple[str, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "parameter_schema", _freeze_mapping(self.parameter_schema))
+        object.__setattr__(self, "default_parameters", _freeze_mapping(self.default_parameters))
+        object.__setattr__(self, "required_fields", tuple(self.required_fields))
 
 
 @dataclass(frozen=True)

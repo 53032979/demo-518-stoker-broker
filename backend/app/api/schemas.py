@@ -1,6 +1,7 @@
-from typing import Any, Literal
+from datetime import date
+from typing import Any, Literal, Self
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class CostConfig(BaseModel):
@@ -17,10 +18,9 @@ class PoolCreateRequest(BaseModel):
     @field_validator("symbols")
     @classmethod
     def normalize_symbols(cls, symbols: list[str]) -> list[str]:
-        normalized = [symbol.strip().upper() for symbol in symbols if symbol.strip()]
-        if not normalized:
-            raise ValueError("symbols must contain at least one non-empty code")
-        return normalized
+        if any(not symbol.strip() for symbol in symbols):
+            raise ValueError("symbols must not contain blank codes")
+        return [symbol.strip().upper() for symbol in symbols]
 
 
 class StockPoolResponse(BaseModel):
@@ -33,10 +33,16 @@ class StockPoolResponse(BaseModel):
 class BacktestRequest(BaseModel):
     strategy_id: str = Field(min_length=1)
     pool_id: str = Field(min_length=1)
-    start_date: str
-    end_date: str
+    start_date: date
+    end_date: date
     parameters: dict[str, Any] = Field(default_factory=dict)
     costs: CostConfig = Field(default_factory=CostConfig)
+
+    @model_validator(mode="after")
+    def validate_date_range(self) -> Self:
+        if self.start_date > self.end_date:
+            raise ValueError("start_date must be on or before end_date")
+        return self
 
 
 class BacktestStatusResponse(BaseModel):

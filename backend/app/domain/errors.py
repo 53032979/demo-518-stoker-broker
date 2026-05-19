@@ -3,7 +3,9 @@ class QuantLabError(Exception):
     message = "系统错误"
 
     def __init__(self, message: str | None = None, details: dict | None = None):
-        super().__init__(message or self.message)
+        effective_message = message or self.message
+        super().__init__(effective_message)
+        self.message = effective_message
         self.details = details or {}
 
 
