@@ -6,14 +6,24 @@ from backend.app.strategies.scoring import rank_factor, select_top_n
 
 def test_registry_contains_five_templates():
     templates = get_strategy_templates()
+    strategy_ids = [template.strategy_id for template in templates]
 
-    assert {template.strategy_id for template in templates} == {
+    assert len(templates) == 5
+    assert len(strategy_ids) == len(set(strategy_ids))
+    assert set(strategy_ids) == {
         "value_quality",
         "momentum_top_n",
         "low_volatility",
         "multi_factor_score",
         "ma_trend_filter",
     }
+
+
+def test_default_parameters_are_declared_in_schema_properties():
+    for template in get_strategy_templates():
+        properties = template.parameter_schema["properties"]
+
+        assert set(template.default_parameters) <= set(properties), template.strategy_id
 
 
 def test_rank_factor_supports_descending_and_missing_values():
