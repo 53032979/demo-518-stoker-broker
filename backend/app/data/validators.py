@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 
 from backend.app.domain.errors import DataValidationError
@@ -26,11 +27,15 @@ def normalize_daily_bars(raw: pd.DataFrame, source: str) -> pd.DataFrame:
 
     frame["symbol"] = frame["symbol"].astype(str).str.strip().str.upper()
     trade_date_text = frame["trade_date"].astype("string").str.strip()
-    parsed_trade_dates = pd.to_datetime(trade_date_text, errors="coerce")
     compact_trade_dates = trade_date_text.str.fullmatch(r"\d{8}", na=False)
+    parsed_trade_dates = pd.Series(pd.NaT, index=frame.index, dtype="datetime64[ns]")
     parsed_trade_dates.loc[compact_trade_dates] = pd.to_datetime(
         trade_date_text.loc[compact_trade_dates],
         format="%Y%m%d",
+        errors="coerce",
+    )
+    parsed_trade_dates.loc[~compact_trade_dates] = pd.to_datetime(
+        trade_date_text.loc[~compact_trade_dates],
         errors="coerce",
     )
     frame["trade_date"] = parsed_trade_dates.dt.strftime("%Y-%m-%d")
@@ -43,7 +48,9 @@ def normalize_daily_bars(raw: pd.DataFrame, source: str) -> pd.DataFrame:
         raise DataValidationError("日期格式错误", {"column": "trade_date"})
     if frame["symbol"].eq("").any():
         raise DataValidationError("证券代码为空", {"column": "symbol"})
-    if frame[numeric_columns].isna().any().any():
+    if frame[numeric_columns].isna().any().any() or not np.isfinite(
+        frame[numeric_columns].to_numpy()
+    ).all():
         raise DataValidationError("数值字段包含空值或非法值", {"columns": numeric_columns})
     if (frame[["open", "high", "low", "close"]] <= 0).any().any():
         raise DataValidationError("价格必须大于 0", {})

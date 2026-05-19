@@ -48,6 +48,28 @@ def test_normalize_daily_bars_accepts_compact_yyyymmdd_trade_dates(trade_date):
     assert result.loc[0, "trade_date"] == "2024-01-02"
 
 
+@pytest.mark.parametrize(
+    "trade_dates,expected_dates",
+    [
+        ([20240102, "2024-01-03"], ["2024-01-02", "2024-01-03"]),
+        (["2024-01-02", "20240103"], ["2024-01-02", "2024-01-03"]),
+    ],
+)
+def test_normalize_daily_bars_accepts_mixed_compact_and_iso_trade_dates(
+    trade_dates, expected_dates
+):
+    raw = pd.DataFrame(
+        [
+            _valid_bar(symbol="000001.SZ", trade_date=trade_dates[0]),
+            _valid_bar(symbol="000001.SZ", trade_date=trade_dates[1]),
+        ]
+    )
+
+    result = normalize_daily_bars(raw, source="unit")
+
+    assert result["trade_date"].tolist() == expected_dates
+
+
 def test_normalize_daily_bars_rejects_missing_required_columns():
     raw = pd.DataFrame([{key: value for key, value in _valid_bar().items() if key != "amount"}])
 
@@ -75,6 +97,21 @@ def test_normalize_daily_bars_rejects_empty_or_null_symbols(symbol):
 @pytest.mark.parametrize("column", ["open", "high", "low", "close", "volume", "amount"])
 def test_normalize_daily_bars_rejects_non_numeric_numeric_fields(column):
     raw = pd.DataFrame([_valid_bar(**{column: "not-a-number"})])
+
+    with pytest.raises(DataValidationError, match="数值字段包含空值或非法值"):
+        normalize_daily_bars(raw, source="unit")
+
+
+@pytest.mark.parametrize(
+    "column,value",
+    [
+        ("open", float("inf")),
+        ("amount", float("inf")),
+        ("volume", float("-inf")),
+    ],
+)
+def test_normalize_daily_bars_rejects_non_finite_numeric_fields(column, value):
+    raw = pd.DataFrame([_valid_bar(**{column: value})])
 
     with pytest.raises(DataValidationError, match="数值字段包含空值或非法值"):
         normalize_daily_bars(raw, source="unit")
