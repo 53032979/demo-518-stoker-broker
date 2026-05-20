@@ -61,8 +61,9 @@ async def upload_daily_bars(request: Request) -> dict:
     normalized = normalize_daily_bars(raw, source=filename)
     request.app.state.repository.upsert_daily_bars(normalized)
     symbols = sorted(normalized["symbol"].unique().tolist())
+    upload_fingerprint = sha1(filename.encode("utf-8") + b"\0" + payload).hexdigest()[:12]
     pool = StockPool(
-        pool_id=f"upload_{sha1(','.join(symbols).encode('utf-8')).hexdigest()[:12]}",
+        pool_id=f"upload_{upload_fingerprint}",
         name=f"Uploaded {Path(filename).stem}",
         pool_type=PoolType.CUSTOM,
         symbols=tuple(symbols),
