@@ -16,15 +16,11 @@ body {
   padding: 16px;
 }
 
-.control-panel,
-.result-panel {
+.control-panel {
   background: #ffffff;
   border: 1px solid #d9dee7;
   border-radius: 8px;
   padding: 16px;
-}
-
-.control-panel {
   display: flex;
   flex-direction: column;
   gap: 14px;
