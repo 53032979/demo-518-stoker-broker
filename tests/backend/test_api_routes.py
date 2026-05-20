@@ -30,6 +30,17 @@ def test_strategies_endpoint_returns_templates(tmp_path):
         assert len(response.json()) == 5
 
 
+@pytest.mark.parametrize("origin", ["http://localhost:5173", "http://127.0.0.1:5173"])
+def test_local_browser_origin_receives_cors_header(tmp_path, origin):
+    with TestClient(create_app(tmp_path / "test.duckdb")) as client:
+        response = client.get("/strategies", headers={"origin": origin})
+        remote_response = client.get("/strategies", headers={"origin": "https://example.com"})
+
+        assert response.status_code == 200
+        assert response.headers["access-control-allow-origin"] == origin
+        assert "access-control-allow-origin" not in remote_response.headers
+
+
 def test_pools_endpoint_returns_default_index_pools(tmp_path):
     with TestClient(create_app(tmp_path / "test.duckdb")) as client:
         response = client.get("/pools")

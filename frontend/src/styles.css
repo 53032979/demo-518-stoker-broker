@@ -8,11 +8,6 @@ body {
   margin: 0;
 }
 
-.app-shell {
-  min-height: 100vh;
-  padding: 24px;
-}
-
 .workbench {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);

@@ -29,14 +29,16 @@ export type BacktestPayload = {
   };
 };
 
+export type BacktestRowValue = number | string | null;
+
 export type BacktestResult = {
   run_id: string;
   status: "completed" | "failed" | "running" | "queued";
   result?: {
     metrics: Record<string, number>;
-    equity_curve: Array<Record<string, number | string>>;
-    positions: Array<Record<string, number | string>>;
-    trades: Array<Record<string, number | string>>;
+    equity_curve: Array<Record<string, BacktestRowValue>>;
+    positions: Array<Record<string, BacktestRowValue>>;
+    trades: Array<Record<string, BacktestRowValue>>;
     logs: string[];
   };
 };

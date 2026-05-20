@@ -3,9 +3,15 @@ import type { BacktestPayload, BacktestResult, StockPool, StrategyTemplate } fro
 const API_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000";
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const { headers, ...requestInit } = init ?? {};
+  const requestHeaders = new Headers(headers);
+  if (!requestHeaders.has("Content-Type")) {
+    requestHeaders.set("Content-Type", "application/json");
+  }
+
   const response = await fetch(`${API_BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
-    ...init,
+    ...requestInit,
+    headers: requestHeaders,
   });
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: response.statusText }));

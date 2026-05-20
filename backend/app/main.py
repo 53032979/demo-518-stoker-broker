@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from backend.app.api.routes import backtests, data, pools, strategies
@@ -45,6 +46,12 @@ def create_app(duckdb_path: str | Path | None = None) -> FastAPI:
             connection.close()
 
     app = FastAPI(title="A Share Quant Lab", version="0.1.0", lifespan=lifespan)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @app.exception_handler(QuantLabError)
     def handle_quant_lab_error(_, exc: QuantLabError) -> JSONResponse:
