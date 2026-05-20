@@ -13,6 +13,11 @@ const result: BacktestResult = {
       { trade_date: "2024-01-02", equity: 1.08 },
       { trade_date: "2024-01-03", equity: 1.02 },
     ],
+    price_bars: [
+      { trade_date: "2024-01-01", symbol: "000001.SZ", open: 9, high: 11, low: 8.8, close: 10 },
+      { trade_date: "2024-01-02", symbol: "000001.SZ", open: 10, high: 12, low: 9.8, close: 11 },
+      { trade_date: "2024-01-03", symbol: "000001.SZ", open: 11, high: 12.5, low: 10.8, close: 12 },
+    ],
     positions: [],
     trades: [
       { trade_date: "2024-01-01", symbol: "000001.SZ", side: "buy", price: 10 },
@@ -30,6 +35,7 @@ describe("Charts", () => {
     expect(screen.getByLabelText("价格与买卖点")).toBeInTheDocument();
     expect(container.querySelector('[data-series="equity"]')).toBeInTheDocument();
     expect(container.querySelector('[data-series="drawdown"]')).toBeInTheDocument();
+    expect(container.querySelectorAll('[data-candle="body"]')).toHaveLength(3);
     expect(container.querySelectorAll('[data-marker="buy"]')).toHaveLength(1);
     expect(container.querySelectorAll('[data-marker="sell"]')).toHaveLength(1);
   });

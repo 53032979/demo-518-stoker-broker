@@ -24,7 +24,7 @@ def test_normalize_daily_bars_accepts_required_columns():
     raw = pd.DataFrame([_valid_bar()])
     result = normalize_daily_bars(raw, source="unit")
 
-    assert list(result.columns) == [
+    required_columns = [
         "symbol",
         "trade_date",
         "open",
@@ -36,6 +36,8 @@ def test_normalize_daily_bars_accepts_required_columns():
         "frequency",
         "source",
     ]
+    assert list(result[required_columns].columns) == required_columns
+    assert {"pe", "pb", "roe", "dividend_yield"}.issubset(result.columns)
     assert result.loc[0, "frequency"] == "1d"
 
 

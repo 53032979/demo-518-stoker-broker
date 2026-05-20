@@ -99,7 +99,7 @@ def run_backtest(request: BacktestRequest, repository: QuantRepository | None = 
     )
     result.logs[:0] = strategy_logs
     run_id = str(uuid4())
-    response = serialize_result(run_id, result)
+    response = serialize_result(run_id, result, bars)
     if repository is not None:
         repository.save_backtest_run(
             run_id=run_id,
@@ -131,18 +131,26 @@ def get_backtest_logs(run_id: str, repository: QuantRepository) -> dict:
     return {"run_id": run_id, "logs": response["result"].get("logs", [])}
 
 
-def serialize_result(run_id: str, result: BacktestResult) -> dict:
+def serialize_result(run_id: str, result: BacktestResult, bars: pd.DataFrame | None = None) -> dict:
     return {
         "run_id": run_id,
         "status": "completed",
         "result": {
             "metrics": asdict(result.metrics),
             "equity_curve": _records(result.equity_curve),
+            "price_bars": _records(_price_bars(bars)) if bars is not None else [],
             "positions": _records(result.positions),
             "trades": _records(result.trades),
             "logs": result.logs,
         },
     }
+
+
+def _price_bars(bars: pd.DataFrame | None) -> pd.DataFrame:
+    if bars is None or bars.empty:
+        return pd.DataFrame()
+    columns = ["trade_date", "symbol", "open", "high", "low", "close"]
+    return bars[columns].sort_values(["trade_date", "symbol"]).reset_index(drop=True)
 
 
 def _load_bars(
@@ -291,8 +299,8 @@ def _select_targets(
     elif strategy_id == "ma_trend_filter":
         filtered = factor_frame[factor_frame["ma_fast_value"] > factor_frame["ma_slow_value"]]
         if filtered.empty:
-            logs.append(f"{trade_date} MA trend filter left no candidates; using full pool")
-            filtered = factor_frame
+            logs.append(f"{trade_date} MA trend filter left no candidates")
+            return _empty_targets(), logs
         selected = filtered.sort_values(["momentum", "symbol"], ascending=[False, True]).head(top_n)
         selected = selected.assign(score=selected["momentum_score"])
     else:
@@ -335,6 +343,13 @@ def _factor_frame(
                 "liquidity": float(amount.mean()) if not amount.empty else 0.0,
                 "ma_fast_value": float(close.tail(ma_fast or 1).mean()),
                 "ma_slow_value": float(close.tail(ma_slow or ma_fast or 1).mean()),
+                "pe": _latest_optional(window, "pe"),
+                "pb": _latest_optional(window, "pb"),
+                "roe": _latest_optional(window, "roe"),
+                "dividend_yield": _latest_optional(window, "dividend_yield"),
+                "gross_margin": _latest_optional(window, "gross_margin"),
+                "debt_ratio": _latest_optional(window, "debt_ratio"),
+                "turnover": _latest_optional(window, "turnover"),
             }
         )
     return pd.DataFrame(rows).sort_values("symbol").reset_index(drop=True)
@@ -342,20 +357,53 @@ def _factor_frame(
 
 def _add_factor_scores(frame: pd.DataFrame) -> pd.DataFrame:
     scored = frame.copy()
-    scored["value_score"] = _rank_score(scored["close"], higher_is_better=False)
+    value_components = [
+        _rank_score(scored["pe"], higher_is_better=False),
+        _rank_score(scored["pb"], higher_is_better=False),
+        _rank_score(scored["dividend_yield"], higher_is_better=True),
+    ]
+    value_proxy = _rank_score(scored["close"], higher_is_better=False)
+    scored["value_score"] = _average_score(value_components, fallback=value_proxy)
     scored["momentum_score"] = _rank_score(scored["momentum"], higher_is_better=True)
     scored["low_volatility_score"] = _rank_score(
         scored["volatility"], higher_is_better=False
     )
-    scored["liquidity_score"] = _rank_score(scored["liquidity"], higher_is_better=True)
-    scored["quality_score"] = (
-        scored["liquidity_score"] * 0.6 + scored["low_volatility_score"] * 0.4
+    scored["liquidity_score"] = _average_score(
+        [
+            _rank_score(scored["liquidity"], higher_is_better=True),
+            _rank_score(scored["turnover"], higher_is_better=True),
+        ],
+        fallback=_rank_score(scored["liquidity"], higher_is_better=True),
+    )
+    quality_proxy = scored["liquidity_score"] * 0.6 + scored["low_volatility_score"] * 0.4
+    scored["quality_score"] = _average_score(
+        [
+            _rank_score(scored["roe"], higher_is_better=True),
+            _rank_score(scored["gross_margin"], higher_is_better=True),
+            _rank_score(scored["debt_ratio"], higher_is_better=False),
+        ],
+        fallback=quality_proxy,
     )
     return scored
 
 
 def _rank_score(series: pd.Series, higher_is_better: bool) -> pd.Series:
     return series.rank(method="first", ascending=higher_is_better, pct=True)
+
+
+def _average_score(scores: list[pd.Series], fallback: pd.Series) -> pd.Series:
+    frame = pd.concat(scores, axis=1)
+    averaged = frame.mean(axis=1, skipna=True)
+    return averaged.fillna(fallback)
+
+
+def _latest_optional(window: pd.DataFrame, column: str) -> float | None:
+    if column not in window.columns:
+        return None
+    values = pd.to_numeric(window[column], errors="coerce").dropna()
+    if values.empty:
+        return None
+    return float(values.iloc[-1])
 
 
 def _weighted_targets(selection: pd.DataFrame, weighting: str) -> pd.DataFrame:

@@ -15,6 +15,16 @@ REQUIRED_DAILY_COLUMNS = [
     "amount",
 ]
 
+OPTIONAL_FACTOR_COLUMNS = [
+    "pe",
+    "pb",
+    "roe",
+    "dividend_yield",
+    "gross_margin",
+    "debt_ratio",
+    "turnover",
+]
+
 
 def normalize_daily_bars(raw: pd.DataFrame, source: str) -> pd.DataFrame:
     missing = [column for column in REQUIRED_DAILY_COLUMNS if column not in raw.columns]
@@ -23,7 +33,8 @@ def normalize_daily_bars(raw: pd.DataFrame, source: str) -> pd.DataFrame:
     if raw.empty:
         raise DataValidationError("日线行情数据为空", {})
 
-    frame = raw[REQUIRED_DAILY_COLUMNS].copy()
+    optional_columns = [column for column in OPTIONAL_FACTOR_COLUMNS if column in raw.columns]
+    frame = raw[REQUIRED_DAILY_COLUMNS + optional_columns].copy()
     if frame["symbol"].isna().any():
         raise DataValidationError("证券代码为空", {"column": "symbol"})
 
@@ -45,6 +56,8 @@ def normalize_daily_bars(raw: pd.DataFrame, source: str) -> pd.DataFrame:
     numeric_columns = ["open", "high", "low", "close", "volume", "amount"]
     for column in numeric_columns:
         frame[column] = pd.to_numeric(frame[column], errors="coerce")
+    for column in optional_columns:
+        frame[column] = pd.to_numeric(frame[column], errors="coerce")
 
     if frame["trade_date"].isna().any():
         raise DataValidationError("日期格式错误", {"column": "trade_date"})
@@ -64,6 +77,10 @@ def normalize_daily_bars(raw: pd.DataFrame, source: str) -> pd.DataFrame:
         raise DataValidationError("最低价大于开盘价、最高价或收盘价", {})
     if frame.duplicated(["symbol", "trade_date"]).any():
         raise DataValidationError("存在重复的 symbol + trade_date 行", {})
+
+    for column in OPTIONAL_FACTOR_COLUMNS:
+        if column not in frame.columns:
+            frame[column] = np.nan
 
     frame["frequency"] = "1d"
     frame["source"] = source

@@ -20,12 +20,29 @@ def initialize_schema(connection: duckdb.DuckDBPyConnection) -> None:
             close DOUBLE NOT NULL,
             volume DOUBLE NOT NULL,
             amount DOUBLE NOT NULL,
+            pe DOUBLE,
+            pb DOUBLE,
+            roe DOUBLE,
+            dividend_yield DOUBLE,
+            gross_margin DOUBLE,
+            debt_ratio DOUBLE,
+            turnover DOUBLE,
             frequency VARCHAR NOT NULL,
             source VARCHAR NOT NULL,
             PRIMARY KEY(symbol, trade_date, frequency, source)
         )
         """
     )
+    for column in (
+        "pe",
+        "pb",
+        "roe",
+        "dividend_yield",
+        "gross_margin",
+        "debt_ratio",
+        "turnover",
+    ):
+        connection.execute(f"ALTER TABLE daily_bars ADD COLUMN IF NOT EXISTS {column} DOUBLE")
     connection.execute(
         """
         CREATE TABLE IF NOT EXISTS stock_pools (

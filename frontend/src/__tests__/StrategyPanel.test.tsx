@@ -9,6 +9,7 @@ const config: StrategyRunConfig = {
   start_date: "2024-01-01",
   end_date: "2024-12-31",
   parameters: { top_n: 2, rebalance: "monthly", weighting: "equal" },
+  costs: { commission_rate: 0.0003, stamp_tax_rate: 0.001, slippage_bps: 5, min_lot_size: 100 },
 };
 
 const strategies = [
@@ -81,6 +82,7 @@ describe("StrategyPanel", () => {
     expect(screen.getByText("动量 Top N")).toBeInTheDocument();
     expect(screen.getByText("沪深300")).toBeInTheDocument();
     expect(screen.getByLabelText("持仓数量")).toHaveAttribute("step", "1");
+    expect(screen.getByLabelText("佣金率")).toHaveValue(0.0003);
   });
 
   it("renders editable controls from the selected strategy schema", () => {
@@ -102,6 +104,11 @@ describe("StrategyPanel", () => {
     fireEvent.change(screen.getByLabelText("调仓频率"), { target: { value: "weekly" } });
     expect(onConfigChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ parameters: expect.objectContaining({ rebalance: "weekly" }) }),
+    );
+
+    fireEvent.change(screen.getByLabelText("滑点bps"), { target: { value: "12" } });
+    expect(onConfigChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ costs: expect.objectContaining({ slippage_bps: 12 }) }),
     );
   });
 

@@ -5,17 +5,49 @@ import pandas as pd
 
 from backend.app.domain.models import PoolType, StockPool
 
+OPTIONAL_FACTOR_COLUMNS = [
+    "pe",
+    "pb",
+    "roe",
+    "dividend_yield",
+    "gross_margin",
+    "debt_ratio",
+    "turnover",
+]
+
 
 class QuantRepository:
     def __init__(self, connection: duckdb.DuckDBPyConnection):
         self.connection = connection
 
     def upsert_daily_bars(self, bars: pd.DataFrame) -> None:
-        self.connection.register("incoming_daily_bars", bars)
+        incoming = bars.copy()
+        for column in OPTIONAL_FACTOR_COLUMNS:
+            if column not in incoming.columns:
+                incoming[column] = None
+        self.connection.register("incoming_daily_bars", incoming)
         try:
             self.connection.execute(
                 """
-                INSERT OR REPLACE INTO daily_bars
+                INSERT OR REPLACE INTO daily_bars (
+                  symbol,
+                  trade_date,
+                  open,
+                  high,
+                  low,
+                  close,
+                  volume,
+                  amount,
+                  pe,
+                  pb,
+                  roe,
+                  dividend_yield,
+                  gross_margin,
+                  debt_ratio,
+                  turnover,
+                  frequency,
+                  source
+                )
                 SELECT
                   symbol,
                   CAST(trade_date AS DATE),
@@ -25,6 +57,13 @@ class QuantRepository:
                   close,
                   volume,
                   amount,
+                  pe,
+                  pb,
+                  roe,
+                  dividend_yield,
+                  gross_margin,
+                  debt_ratio,
+                  turnover,
                   frequency,
                   source
                 FROM incoming_daily_bars
@@ -54,6 +93,13 @@ class QuantRepository:
                     close,
                     volume,
                     amount,
+                    pe,
+                    pb,
+                    roe,
+                    dividend_yield,
+                    gross_margin,
+                    debt_ratio,
+                    turnover,
                     frequency,
                     source,
                     ROW_NUMBER() OVER (
@@ -69,7 +115,8 @@ class QuantRepository:
                   AND (? IS NULL OR source = ?)
             )
             SELECT symbol, CAST(trade_date AS VARCHAR) AS trade_date, open, high, low, close,
-                   volume, amount, frequency, source
+                   volume, amount, pe, pb, roe, dividend_yield, gross_margin,
+                   debt_ratio, turnover, frequency, source
             FROM ranked
             WHERE row_number = 1
             ORDER BY trade_date, symbol

@@ -86,6 +86,10 @@ function completedBacktest(totalReturn: number) {
         { trade_date: "2024-01-31", equity: 1 },
         { trade_date: "2024-02-29", equity: 1 + totalReturn },
       ],
+      price_bars: [
+        { trade_date: "2024-01-31", symbol: "000001.SZ", open: 10, high: 11, low: 9, close: 10.5 },
+        { trade_date: "2024-02-29", symbol: "000001.SZ", open: 11, high: 12, low: 10, close: 11.5 },
+      ],
       positions: [{ symbol: "000001.SZ", weight: 1, market_value: 12000 }],
       trades: [{ trade_date: "2024-02-01", symbol: "000001.SZ", side: "buy", price: 12.3, quantity: 1000 }],
       logs: ["done"],
@@ -174,6 +178,8 @@ describe("Workbench", () => {
     fireEvent.change(screen.getByLabelText("结束日期"), { target: { value: "2024-10-31" } });
     fireEvent.change(screen.getByLabelText("持仓数量"), { target: { value: "7.8" } });
     fireEvent.change(screen.getByLabelText("权重方式"), { target: { value: "equal" } });
+    fireEvent.change(screen.getByLabelText("佣金率"), { target: { value: "0.0005" } });
+    fireEvent.change(screen.getByLabelText("滑点bps"), { target: { value: "8" } });
     fireEvent.click(screen.getByRole("button", { name: "运行回测" }));
 
     await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith("/backtests"))).toBe(true));
@@ -183,6 +189,7 @@ describe("Workbench", () => {
       start_date: "2024-02-01",
       end_date: "2024-10-31",
       parameters: { top_n: 7, weighting: "equal", weights: { value: 0.8, quality: 0.2 } },
+      costs: { commission_rate: 0.0005, stamp_tax_rate: 0.001, slippage_bps: 8, min_lot_size: 100 },
     });
   });
 

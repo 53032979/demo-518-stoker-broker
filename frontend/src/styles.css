@@ -228,6 +228,19 @@ body {
   fill: #dc2626;
 }
 
+.candle-wick {
+  stroke: #526173;
+  stroke-width: 1.5;
+}
+
+.candle-up {
+  fill: #16a34a;
+}
+
+.candle-down {
+  fill: #dc2626;
+}
+
 .table-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }

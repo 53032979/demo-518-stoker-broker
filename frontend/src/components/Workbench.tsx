@@ -14,6 +14,12 @@ const DEFAULT_CONFIG: StrategyRunConfig = {
   start_date: "2024-01-01",
   end_date: "2024-12-31",
   parameters: { top_n: 2, rebalance: "monthly", weighting: "equal" },
+  costs: {
+    commission_rate: 0.0003,
+    stamp_tax_rate: 0.001,
+    slippage_bps: 5,
+    min_lot_size: 100,
+  },
 };
 
 const FALLBACK_STRATEGIES: StrategyTemplate[] = [
@@ -142,12 +148,7 @@ export function Workbench() {
         start_date: runConfig.start_date,
         end_date: runConfig.end_date,
         parameters: runConfig.parameters,
-        costs: {
-          commission_rate: 0.0003,
-          stamp_tax_rate: 0.001,
-          slippage_bps: 5,
-          min_lot_size: 100,
-        },
+        costs: runConfig.costs,
       });
       if (actionSequence.current !== sequence) return;
       setResult(backtestResult);

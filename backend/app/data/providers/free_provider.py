@@ -9,6 +9,13 @@ DAILY_BAR_COLUMNS = [
     "close",
     "volume",
     "amount",
+    "pe",
+    "pb",
+    "roe",
+    "dividend_yield",
+    "gross_margin",
+    "debt_ratio",
+    "turnover",
     "frequency",
     "source",
 ]
@@ -100,6 +107,13 @@ def load_seed_daily_bars(symbols: list[str], start_date: str, end_date: str) -> 
                     "close": close,
                     "volume": 100000 + offset * 1000,
                     "amount": close * (100000 + offset * 1000),
+                    "pe": 8.0 + index * 1.8,
+                    "pb": 0.9 + index * 0.15,
+                    "roe": 0.22 - index * 0.004,
+                    "dividend_yield": 0.04 - index * 0.0005,
+                    "gross_margin": 0.48 - index * 0.003,
+                    "debt_ratio": 0.25 + index * 0.004,
+                    "turnover": 0.015 + index * 0.0008 + offset * 0.00005,
                     "frequency": "1d",
                     "source": "seed",
                 }
@@ -148,6 +162,9 @@ class FreeMarketDataProvider:
             )
             frame["trade_date"] = pd.to_datetime(frame["trade_date"]).dt.strftime("%Y-%m-%d")
             frame["symbol"] = symbol
+            for column in DAILY_BAR_COLUMNS:
+                if column not in frame.columns and column not in {"frequency", "source"}:
+                    frame[column] = None
             frame["frequency"] = "1d"
             frame["source"] = "akshare"
             rows.append(frame[DAILY_BAR_COLUMNS])

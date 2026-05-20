@@ -33,6 +33,10 @@ function rowPrice(row: Record<string, unknown>) {
   return numberValue(row.price) ?? numberValue(row.close) ?? numberValue(row.trade_price) ?? numberValue(row.value);
 }
 
+function rowSymbol(row: Record<string, unknown>) {
+  return stringValue(row.symbol);
+}
+
 function scale(points: Point[]) {
   const values = points.map((point) => point.value);
   const min = Math.min(...values);
@@ -82,15 +86,55 @@ function tradePoints(result?: BacktestResult) {
     .filter((point): point is Point & { side: string } => Boolean(point));
 }
 
+function priceBars(result?: BacktestResult) {
+  const bars = result?.result?.price_bars ?? [];
+  const trades = result?.result?.trades ?? [];
+  const tradedSymbol = rowSymbol(trades[0] ?? {});
+  const symbol = tradedSymbol ?? rowSymbol(bars[0] ?? {});
+  return bars
+    .filter((row) => !symbol || rowSymbol(row) === symbol)
+    .map((row, index) => {
+      const open = numberValue(row.open);
+      const high = numberValue(row.high);
+      const low = numberValue(row.low);
+      const close = numberValue(row.close);
+      if (open === undefined || high === undefined || low === undefined || close === undefined) return undefined;
+      return {
+        date: rowDate(row, String(index + 1)),
+        open,
+        high,
+        low,
+        close,
+      };
+    })
+    .filter((bar): bar is { date: string; open: number; high: number; low: number; close: number } => Boolean(bar));
+}
+
 export function Charts({ result }: Props) {
   const equity = equityPoints(result);
   const drawdown = drawdownPoints(equity);
   const trades = tradePoints(result);
+  const bars = priceBars(result);
   const hasEquity = equity.length > 0;
-  const hasTrades = trades.length > 0;
+  const hasPriceBars = bars.length > 0;
   const scaledEquity = scale(equity);
   const scaledDrawdown = scale(drawdown.length ? drawdown : [{ date: "", value: 0 }]);
-  const scaledTrades = scale(trades.length ? trades : [{ date: "", value: 0 }]);
+  const priceScaleInput = bars.flatMap((bar) => [
+    { date: bar.date, value: bar.high },
+    { date: bar.date, value: bar.low },
+  ]);
+  const scaledPrices = scale(priceScaleInput.length ? priceScaleInput : [{ date: "", value: 0 }]);
+  const priceY = (value: number) => {
+    const values = priceScaleInput.map((point) => point.value);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const spread = max - min || 1;
+    return HEIGHT - PADDING - ((value - min) / spread) * (HEIGHT - PADDING * 2);
+  };
+  const xStep = bars.length > 1 ? (WIDTH - PADDING * 2) / (bars.length - 1) : 0;
+  const tradeDateToPoint = new Map(
+    trades.map((trade) => [trade.date, { ...trade, y: priceY(trade.value) }]),
+  );
 
   return (
     <section className="chart-grid">
@@ -110,26 +154,48 @@ export function Charts({ result }: Props) {
         )}
       </div>
       <div className="chart-box">
-        {hasTrades ? (
+        {hasPriceBars ? (
           <svg aria-label="价格与买卖点" viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img">
             <line className="axis-line" x1={PADDING} y1={HEIGHT - PADDING} x2={WIDTH - PADDING} y2={HEIGHT - PADDING} />
             <line className="axis-line" x1={PADDING} y1={PADDING} x2={PADDING} y2={HEIGHT - PADDING} />
-            <path data-series="price" className="price-line" d={pathFor(scaledTrades)} />
-            {scaledTrades.map((point, index) => {
-              const marker = trades[index]?.side.includes("sell") ? "sell" : "buy";
+            <path
+              data-series="price"
+              className="price-line"
+              d={pathFor(scaledPrices.filter((_, index) => index % 2 === 0))}
+            />
+            {bars.map((bar, index) => {
+              const x = PADDING + index * xStep;
+              const candleWidth = Math.max(4, Math.min(10, xStep * 0.45 || 8));
+              const openY = priceY(bar.open);
+              const highY = priceY(bar.high);
+              const lowY = priceY(bar.low);
+              const closeY = priceY(bar.close);
+              const marker = tradeDateToPoint.get(bar.date);
               return (
-                <circle
-                  key={`${point.date}-${index}`}
-                  data-marker={marker}
-                  className={marker === "sell" ? "sell-marker" : "buy-marker"}
-                  cx={point.x}
-                  cy={point.y}
-                  r={5}
-                />
+                <g key={`${bar.date}-${index}`}>
+                  <line data-candle="wick" className="candle-wick" x1={x} x2={x} y1={highY} y2={lowY} />
+                  <rect
+                    data-candle="body"
+                    className={bar.close >= bar.open ? "candle-up" : "candle-down"}
+                    x={x - candleWidth / 2}
+                    y={Math.min(openY, closeY)}
+                    width={candleWidth}
+                    height={Math.max(Math.abs(openY - closeY), 2)}
+                  />
+                  {marker ? (
+                    <circle
+                      data-marker={marker.side.includes("sell") ? "sell" : "buy"}
+                      className={marker.side.includes("sell") ? "sell-marker" : "buy-marker"}
+                      cx={x}
+                      cy={marker.y}
+                      r={5}
+                    />
+                  ) : null}
+                </g>
               );
             })}
             <text x={PADDING} y={18}>
-              价格 / 买卖点
+              K线 / 买卖点
             </text>
           </svg>
         ) : (

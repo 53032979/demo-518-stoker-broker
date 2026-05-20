@@ -31,7 +31,20 @@ def test_repository_round_trips_daily_bars(tmp_path):
     repo.upsert_daily_bars(bars)
     result = repo.load_daily_bars(["000001.SZ"], "2024-01-01", "2024-01-31")
 
-    assert result.to_dict(orient="records") == [
+    assert result[
+        [
+            "symbol",
+            "trade_date",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "amount",
+            "frequency",
+            "source",
+        ]
+    ].to_dict(orient="records") == [
         {
             "symbol": "000001.SZ",
             "trade_date": "2024-01-02",
@@ -45,6 +58,7 @@ def test_repository_round_trips_daily_bars(tmp_path):
             "source": "unit",
         }
     ]
+    assert {"pe", "pb", "roe"}.issubset(result.columns)
 
 
 def test_repository_dedupes_daily_bars_across_sources(tmp_path):

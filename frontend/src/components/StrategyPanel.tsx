@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { StockPool, StrategyParameterSchema, StrategyParameterValue, StrategyParameters, StrategyTemplate } from "../types";
+import type { CostConfig, StockPool, StrategyParameterSchema, StrategyParameterValue, StrategyParameters, StrategyTemplate } from "../types";
 
 export type StrategyRunConfig = {
   strategy_id: string;
@@ -7,6 +7,7 @@ export type StrategyRunConfig = {
   start_date: string;
   end_date: string;
   parameters: StrategyParameters;
+  costs: CostConfig;
 };
 
 type Props = {
@@ -51,6 +52,12 @@ function coerceNumber(value: string, schema: StrategyParameterSchema) {
   return normalized;
 }
 
+function coerceCost(value: string, minimum: number, maximum: number) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return minimum;
+  return Math.min(Math.max(parsed, minimum), maximum);
+}
+
 function serializeSymbols(value: string) {
   return value
     .split(/[\s,;]+/)
@@ -84,6 +91,16 @@ export function StrategyPanel({ strategies, pools, config, onConfigChange, onRun
       parameters: {
         ...parameters,
         [name]: value,
+      },
+    });
+  };
+
+  const updateCosts = (updates: Partial<CostConfig>) => {
+    onConfigChange({
+      ...config,
+      costs: {
+        ...config.costs,
+        ...updates,
       },
     });
   };
@@ -227,6 +244,56 @@ export function StrategyPanel({ strategies, pools, config, onConfigChange, onRun
         </span>
       </label>
       {Object.entries(schemaProperties(strategy?.parameter_schema)).map(([name, schema]) => renderParameter(name, schema))}
+      <fieldset className="parameter-group">
+        <legend>交易成本</legend>
+        <label>
+          佣金率
+          <input
+            aria-label="佣金率"
+            type="number"
+            min={0}
+            max={0.01}
+            step="0.0001"
+            value={config.costs.commission_rate}
+            onChange={(event) => updateCosts({ commission_rate: coerceCost(event.currentTarget.value, 0, 0.01) })}
+          />
+        </label>
+        <label>
+          印花税率
+          <input
+            aria-label="印花税率"
+            type="number"
+            min={0}
+            max={0.02}
+            step="0.0001"
+            value={config.costs.stamp_tax_rate}
+            onChange={(event) => updateCosts({ stamp_tax_rate: coerceCost(event.currentTarget.value, 0, 0.02) })}
+          />
+        </label>
+        <label>
+          滑点bps
+          <input
+            aria-label="滑点bps"
+            type="number"
+            min={0}
+            max={500}
+            step="1"
+            value={config.costs.slippage_bps}
+            onChange={(event) => updateCosts({ slippage_bps: coerceCost(event.currentTarget.value, 0, 500) })}
+          />
+        </label>
+        <label>
+          最小手数
+          <input
+            aria-label="最小手数"
+            type="number"
+            min={1}
+            step="1"
+            value={config.costs.min_lot_size}
+            onChange={(event) => updateCosts({ min_lot_size: Math.floor(coerceCost(event.currentTarget.value, 1, 100000)) })}
+          />
+        </label>
+      </fieldset>
       <div className="custom-pool-row">
         <label>
           自定义股票池标的

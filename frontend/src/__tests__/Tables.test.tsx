@@ -9,7 +9,10 @@ const result: BacktestResult = {
   result: {
     metrics: {},
     equity_curve: [],
-    positions: [{ symbol: "000001.SZ", weight: 0.5, market_value: 12000 }],
+    positions: [
+      { trade_date: "2024-01-02", symbol: "OLD.SZ", weight: 0.5, market_value: 9000 },
+      { trade_date: "2024-01-03", symbol: "000001.SZ", weight: 0.5, market_value: 12000 },
+    ],
     trades: [{ trade_date: "2024-01-02", symbol: "600000.SH", side: "sell", price: 9.8 }],
     logs: ["loaded 2 symbols", "completed"],
   },
@@ -22,6 +25,7 @@ describe("Tables", () => {
     expect(screen.getByRole("table", { name: "当前持仓" })).toBeInTheDocument();
     expect(screen.getByText("000001.SZ")).toBeInTheDocument();
     expect(screen.getByText("12000")).toBeInTheDocument();
+    expect(screen.queryByText("OLD.SZ")).not.toBeInTheDocument();
     expect(screen.getByRole("table", { name: "交易流水" })).toBeInTheDocument();
     expect(screen.getByText("600000.SH")).toBeInTheDocument();
     expect(screen.getByText("sell")).toBeInTheDocument();

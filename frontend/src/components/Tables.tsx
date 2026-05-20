@@ -18,6 +18,16 @@ function formatCell(value: unknown) {
   return String(value);
 }
 
+function currentRows(rows: Array<Record<string, unknown>>) {
+  const datedRows = rows.filter((row) => typeof row.trade_date === "string");
+  if (!datedRows.length) return rows;
+  const sortedDates = datedRows
+    .map((row) => String(row.trade_date))
+    .sort();
+  const latestDate = sortedDates[sortedDates.length - 1];
+  return rows.filter((row) => String(row.trade_date) === latestDate);
+}
+
 function DataTable({
   title,
   rows,
@@ -62,7 +72,7 @@ function DataTable({
 }
 
 export function Tables({ result }: Props) {
-  const positions = result?.result?.positions ?? [];
+  const positions = currentRows(result?.result?.positions ?? []);
   const trades = result?.result?.trades ?? [];
   const logs = result?.result?.logs ?? [];
   return (

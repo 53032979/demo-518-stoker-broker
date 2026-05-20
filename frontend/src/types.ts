@@ -46,12 +46,15 @@ export type BacktestPayload = {
 
 export type BacktestRowValue = number | string | null;
 
+export type CostConfig = BacktestPayload["costs"];
+
 export type BacktestResult = {
   run_id: string;
   status: "completed" | "failed" | "running" | "queued";
   result?: {
     metrics: Record<string, number>;
     equity_curve: Array<Record<string, BacktestRowValue>>;
+    price_bars?: Array<Record<string, BacktestRowValue>>;
     positions: Array<Record<string, BacktestRowValue>>;
     trades: Array<Record<string, BacktestRowValue>>;
     logs: string[];

@@ -93,6 +93,7 @@ def test_backtest_endpoint_returns_completed_result_for_seed_data(tmp_path):
         assert payload["status"] == "completed"
         assert payload["result"]["metrics"]["total_return"] is not None
         assert payload["result"]["equity_curve"]
+        assert payload["result"]["price_bars"]
 
 
 def test_strategy_ids_select_different_symbols_on_uploaded_data(tmp_path):
@@ -159,6 +160,66 @@ def test_uploaded_csv_pool_can_be_backtested_and_affects_run(tmp_path):
         assert response.status_code == 200
         traded_symbols = {trade["symbol"] for trade in response.json()["result"]["trades"]}
         assert traded_symbols == {"ZZZ.SZ"}
+
+
+def test_value_quality_uses_uploaded_factor_columns(tmp_path):
+    csv_bytes = (
+        "symbol,trade_date,open,high,low,close,volume,amount,pe,pb,roe\n"
+        "AAA.SZ,2024-01-02,10,10.2,9.8,10,100000,1000000,30,4,0.05\n"
+        "BBB.SZ,2024-01-02,10,10.2,9.8,10,100000,1000000,8,1,0.20\n"
+    ).encode("utf-8")
+
+    with TestClient(create_app(tmp_path / "test.duckdb")) as client:
+        upload = client.post(
+            "/data/uploads",
+            files={"file": ("factors.csv", csv_bytes, "text/csv")},
+        )
+        payload = _backtest_payload(
+            {"top_n": 1, "rebalance": "monthly", "weighting": "equal"},
+            pool_id=upload.json()["pool"]["pool_id"],
+        )
+        payload["strategy_id"] = "value_quality"
+        payload["start_date"] = "2024-01-02"
+        payload["end_date"] = "2024-01-02"
+
+        response = client.post("/backtests", json=payload)
+
+        assert response.status_code == 200
+        traded_symbols = {trade["symbol"] for trade in response.json()["result"]["trades"]}
+        assert traded_symbols == {"BBB.SZ"}
+
+
+def test_ma_trend_filter_does_not_trade_when_all_symbols_are_downtrend(tmp_path):
+    csv_bytes = (
+        "symbol,trade_date,open,high,low,close,volume,amount\n"
+        "AAA.SZ,2024-01-01,10,10.2,9.8,10,100000,1000000\n"
+        "AAA.SZ,2024-01-02,9,9.2,8.8,9,100000,900000\n"
+        "AAA.SZ,2024-01-03,8,8.2,7.8,8,100000,800000\n"
+    ).encode("utf-8")
+
+    with TestClient(create_app(tmp_path / "test.duckdb")) as client:
+        upload = client.post(
+            "/data/uploads",
+            files={"file": ("downtrend.csv", csv_bytes, "text/csv")},
+        )
+        payload = _backtest_payload(
+            {
+                "top_n": 1,
+                "rebalance": "monthly",
+                "weighting": "equal",
+                "ma_fast": 1,
+                "ma_slow": 3,
+            },
+            pool_id=upload.json()["pool"]["pool_id"],
+        )
+        payload["strategy_id"] = "ma_trend_filter"
+        payload["start_date"] = "2024-01-01"
+        payload["end_date"] = "2024-01-03"
+
+        response = client.post("/backtests", json=payload)
+
+        assert response.status_code == 400
+        assert response.json()["code"] == "backtest_runtime_error"
 
 
 def test_uploaded_pool_uses_latest_bound_source_for_same_symbols(tmp_path):
@@ -338,7 +399,20 @@ def test_data_upload_endpoint_validates_and_persists_csv(tmp_path):
             "2024-01-01",
             "2024-01-31",
         )
-        assert persisted.to_dict(orient="records") == [
+        assert persisted[
+            [
+                "symbol",
+                "trade_date",
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume",
+                "amount",
+                "frequency",
+                "source",
+            ]
+        ].to_dict(orient="records") == [
             {
                 "symbol": "000001.SZ",
                 "trade_date": "2024-01-02",
@@ -352,6 +426,7 @@ def test_data_upload_endpoint_validates_and_persists_csv(tmp_path):
                 "source": "daily.csv",
             }
         ]
+        assert {"pe", "pb", "roe"}.issubset(persisted.columns)
 
 
 @pytest.mark.parametrize("top_n", ["abc", 1.9, True, 0, 501])
