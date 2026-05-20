@@ -16,15 +16,19 @@ from backend.app.storage.repository import QuantRepository
 
 
 def _json_safe(value: Any) -> Any:
+    if value is None or isinstance(value, str | int | bool):
+        return value
     if isinstance(value, float) and not math.isfinite(value):
         return str(value)
+    if isinstance(value, float):
+        return value
     if isinstance(value, Mapping):
         return {str(key): _json_safe(item) for key, item in value.items()}
     if isinstance(value, list | tuple):
         return [_json_safe(item) for item in value]
     if isinstance(value, set | frozenset):
         return [_json_safe(item) for item in sorted(value, key=str)]
-    return value
+    return str(value)
 
 
 def create_app(duckdb_path: str | Path | None = None) -> FastAPI:

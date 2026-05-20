@@ -198,6 +198,23 @@ def test_backtest_endpoint_returns_structured_error_for_non_finite_request_valid
         assert payload["details"]
 
 
+def test_backtest_endpoint_returns_structured_error_for_reversed_dates(tmp_path):
+    with TestClient(
+        create_app(tmp_path / "test.duckdb"),
+        raise_server_exceptions=False,
+    ) as client:
+        payload = _backtest_payload()
+        payload["start_date"] = "2024-01-10"
+        payload["end_date"] = "2024-01-01"
+
+        response = client.post("/backtests", json=payload)
+
+        assert response.status_code == 400
+        body = response.json()
+        assert body["code"] == "request_validation_error"
+        assert body["details"]
+
+
 def test_backtest_endpoint_rejects_weekend_only_seed_range(tmp_path):
     payload = _backtest_payload()
     payload["start_date"] = "2024-01-06"
