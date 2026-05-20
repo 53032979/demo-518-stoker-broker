@@ -106,6 +106,15 @@ class QuantRepository:
             for row in rows
         ]
 
+    def get_stock_pool_source(self, pool_id: str) -> str | None:
+        row = self.connection.execute(
+            "SELECT source FROM stock_pools WHERE pool_id = ?",
+            [pool_id],
+        ).fetchone()
+        if row is None:
+            return None
+        return row[0]
+
     def save_backtest_run(
         self,
         run_id: str,

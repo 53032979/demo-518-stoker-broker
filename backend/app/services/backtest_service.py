@@ -65,7 +65,8 @@ def run_backtest(request: BacktestRequest, repository: QuantRepository | None = 
 
     start_date = request.start_date.isoformat()
     end_date = request.end_date.isoformat()
-    bars = _load_bars(repository, symbols, start_date, end_date)
+    pool = pools[request.pool_id]
+    bars = _load_bars(repository, pool, symbols, start_date, end_date)
     if bars.empty:
         raise BacktestRuntimeError(
             "没有可用行情数据",
@@ -88,8 +89,15 @@ def run_backtest(request: BacktestRequest, repository: QuantRepository | None = 
         )
 
     costs = CostConfigModel(**request.costs.model_dump())
-    result = run_equal_weight_backtest(bars, targets_by_date, 100000.0, costs)
-    result.logs.extend(strategy_logs)
+    result = run_equal_weight_backtest(
+        bars,
+        targets_by_date,
+        100000.0,
+        costs,
+        stop_loss=parameters.get("stop_loss", 0.0),
+        take_profit=parameters.get("take_profit", 0.0),
+    )
+    result.logs[:0] = strategy_logs
     run_id = str(uuid4())
     response = serialize_result(run_id, result)
     if repository is not None:
@@ -139,15 +147,63 @@ def serialize_result(run_id: str, result: BacktestResult) -> dict:
 
 def _load_bars(
     repository: QuantRepository | None,
+    pool: StockPool,
     symbols: list[str],
     start_date: str,
     end_date: str,
 ) -> pd.DataFrame:
+    provider = FreeMarketDataProvider()
     if repository is not None:
+        pool_source = repository.get_stock_pool_source(pool.pool_id)
+        if pool_source and pool_source != "custom":
+            stored = repository.load_daily_bars(symbols, start_date, end_date, source=pool_source)
+            return _require_symbol_coverage(
+                stored,
+                symbols,
+                pool_id=pool.pool_id,
+                source=pool_source,
+            )
+
         stored = repository.load_daily_bars(symbols, start_date, end_date)
         if not stored.empty:
-            return stored
-    return FreeMarketDataProvider().load_daily_bars(symbols, start_date, end_date)
+            missing_symbols = _missing_symbols(stored, symbols)
+            if missing_symbols:
+                fallback = provider.load_daily_bars(missing_symbols, start_date, end_date)
+                if fallback.empty:
+                    raise BacktestRuntimeError(
+                        "股票池行情覆盖不足",
+                        {
+                            "pool_id": pool.pool_id,
+                            "missing_symbols": missing_symbols,
+                            "start_date": start_date,
+                            "end_date": end_date,
+                        },
+                    )
+                stored = pd.concat([stored, fallback], ignore_index=True)
+            return stored.sort_values(["trade_date", "symbol"]).reset_index(drop=True)
+    return provider.load_daily_bars(symbols, start_date, end_date)
+
+
+def _missing_symbols(bars: pd.DataFrame, symbols: list[str]) -> list[str]:
+    if bars.empty or "symbol" not in bars.columns:
+        return symbols
+    present = set(bars["symbol"].astype(str).unique())
+    return [symbol for symbol in symbols if symbol not in present]
+
+
+def _require_symbol_coverage(
+    bars: pd.DataFrame,
+    symbols: list[str],
+    pool_id: str,
+    source: str,
+) -> pd.DataFrame:
+    missing_symbols = _missing_symbols(bars, symbols)
+    if bars.empty or missing_symbols:
+        raise BacktestRuntimeError(
+            "上传股票池行情覆盖不足",
+            {"pool_id": pool_id, "source": source, "missing_symbols": missing_symbols},
+        )
+    return bars.sort_values(["trade_date", "symbol"]).reset_index(drop=True)
 
 
 def _build_targets_by_date(

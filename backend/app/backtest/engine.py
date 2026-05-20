@@ -58,6 +58,8 @@ def run_equal_weight_backtest(
     targets_by_date: dict[str, pd.DataFrame],
     initial_cash: float,
     costs: CostConfigModel,
+    stop_loss: float = 0.0,
+    take_profit: float = 0.0,
 ) -> BacktestResult:
     cash = initial_cash
     holdings: dict[str, int] = {}
@@ -71,8 +73,59 @@ def run_equal_weight_backtest(
     ordered = bars.sort_values(["trade_date", "symbol"]).copy()
     for trade_date, day_bars in ordered.groupby("trade_date"):
         price_map = dict(zip(day_bars["symbol"], day_bars["close"]))
+        risk_exited_symbols: set[str] = set()
+        for symbol in sorted(list(holdings)):
+            if symbol not in price_map:
+                continue
+            price = float(price_map[symbol])
+            average_cost = average_costs.get(symbol, price)
+            exit_reason = None
+            if stop_loss > 0 and price <= average_cost * (1 - stop_loss):
+                exit_reason = "stop_loss"
+            elif take_profit > 0 and price >= average_cost * (1 + take_profit):
+                exit_reason = "take_profit"
+            if exit_reason is None:
+                continue
+
+            risk_exited_symbols.add(symbol)
+            previous_close = previous_prices.get(symbol)
+            if previous_close is not None and not can_trade_at_limit(
+                "sell", price, previous_close
+            ):
+                logs.append(f"{trade_date} {symbol} {exit_reason} sell skipped: limit down")
+                continue
+
+            quantity = holdings.get(symbol, 0)
+            if quantity == 0:
+                continue
+            gross = price * quantity
+            fee = calculate_costs("sell", price, quantity, costs)
+            net_amount = gross - fee
+            pnl = net_amount - average_cost * quantity
+            cash += net_amount
+            holdings.pop(symbol, None)
+            average_costs.pop(symbol, None)
+            trade_rows.append(
+                {
+                    "trade_date": trade_date,
+                    "symbol": symbol,
+                    "side": "sell",
+                    "price": price,
+                    "quantity": quantity,
+                    "gross_amount": gross,
+                    "costs": fee,
+                    "net_amount": net_amount,
+                    "pnl": pnl,
+                    "reason": exit_reason,
+                }
+            )
+
         if trade_date in targets_by_date:
-            target_weights = _target_weights(targets_by_date[trade_date])
+            target_weights = {
+                symbol: weight
+                for symbol, weight in _target_weights(targets_by_date[trade_date]).items()
+                if symbol not in risk_exited_symbols
+            }
             account_value = cash + sum(
                 quantity * price_map.get(symbol, previous_prices.get(symbol, 0.0))
                 for symbol, quantity in holdings.items()

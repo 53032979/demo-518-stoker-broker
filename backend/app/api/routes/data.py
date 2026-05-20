@@ -67,7 +67,7 @@ async def upload_daily_bars(request: Request) -> dict:
         pool_type=PoolType.CUSTOM,
         symbols=tuple(symbols),
     )
-    request.app.state.repository.save_stock_pool(pool, source="upload")
+    request.app.state.repository.save_stock_pool(pool, source=filename)
     return {
         "status": "validated",
         "rows": int(len(normalized)),

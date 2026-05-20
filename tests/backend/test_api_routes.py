@@ -161,6 +161,97 @@ def test_uploaded_csv_pool_can_be_backtested_and_affects_run(tmp_path):
         assert traded_symbols == {"ZZZ.SZ"}
 
 
+def test_uploaded_pool_uses_latest_bound_source_for_same_symbols(tmp_path):
+    old_csv = (
+        "symbol,trade_date,open,high,low,close,volume,amount\n"
+        "AAA.SZ,2024-01-02,10,10.2,9.8,10,100000,1000000\n"
+    ).encode("utf-8")
+    new_csv = (
+        "symbol,trade_date,open,high,low,close,volume,amount\n"
+        "AAA.SZ,2024-01-02,20,20.2,19.8,20,100000,2000000\n"
+    ).encode("utf-8")
+
+    with TestClient(create_app(tmp_path / "test.duckdb")) as client:
+        client.post("/data/uploads", files={"file": ("zzz_old.csv", old_csv, "text/csv")})
+        upload = client.post(
+            "/data/uploads",
+            files={"file": ("aaa_new.csv", new_csv, "text/csv")},
+        )
+        pool_id = upload.json()["pool"]["pool_id"]
+        payload = _backtest_payload(
+            {"top_n": 1, "rebalance": "monthly", "weighting": "equal", "lookback": 1},
+            pool_id=pool_id,
+        )
+        payload["start_date"] = "2024-01-02"
+        payload["end_date"] = "2024-01-02"
+
+        response = client.post("/backtests", json=payload)
+
+        assert response.status_code == 200
+        buy = response.json()["result"]["trades"][0]
+        assert buy["symbol"] == "AAA.SZ"
+        assert buy["price"] == 20.0
+
+
+def test_custom_pool_with_partial_uploaded_coverage_keeps_all_pool_members(tmp_path):
+    csv_bytes = (
+        "symbol,trade_date,open,high,low,close,volume,amount\n"
+        "AAA.SZ,2024-01-02,10,10.2,9.8,10,100000,1000000\n"
+    ).encode("utf-8")
+
+    with TestClient(create_app(tmp_path / "test.duckdb")) as client:
+        client.post("/data/uploads", files={"file": ("partial.csv", csv_bytes, "text/csv")})
+        pool = client.post(
+            "/pools",
+            json={"name": "混合池", "symbols": ["AAA.SZ", "BBB.SZ"]},
+        ).json()
+        payload = _backtest_payload(
+            {"top_n": 2, "rebalance": "monthly", "weighting": "equal", "lookback": 1},
+            pool_id=pool["pool_id"],
+        )
+        payload["start_date"] = "2024-01-02"
+        payload["end_date"] = "2024-01-02"
+
+        response = client.post("/backtests", json=payload)
+
+        assert response.status_code == 200
+        traded_symbols = {trade["symbol"] for trade in response.json()["result"]["trades"]}
+        assert traded_symbols == {"AAA.SZ", "BBB.SZ"}
+
+
+def test_stop_loss_parameter_triggers_real_sell_trade(tmp_path):
+    csv_bytes = (
+        "symbol,trade_date,open,high,low,close,volume,amount\n"
+        "AAA.SZ,2024-01-01,10,10.2,9.8,10,100000,1000000\n"
+        "AAA.SZ,2024-01-08,9.4,9.5,9.3,9.4,100000,940000\n"
+    ).encode("utf-8")
+
+    with TestClient(create_app(tmp_path / "test.duckdb")) as client:
+        upload = client.post(
+            "/data/uploads",
+            files={"file": ("stop_loss.csv", csv_bytes, "text/csv")},
+        )
+        payload = _backtest_payload(
+            {
+                "top_n": 1,
+                "rebalance": "weekly",
+                "weighting": "equal",
+                "lookback": 1,
+                "stop_loss": 0.05,
+            },
+            pool_id=upload.json()["pool"]["pool_id"],
+        )
+        payload["start_date"] = "2024-01-01"
+        payload["end_date"] = "2024-01-08"
+
+        response = client.post("/backtests", json=payload)
+
+        assert response.status_code == 200
+        trades = response.json()["result"]["trades"]
+        assert [trade["side"] for trade in trades] == ["buy", "sell"]
+        assert trades[1]["reason"] == "stop_loss"
+
+
 def test_backtest_run_retrieval_endpoints_return_persisted_data(tmp_path):
     with TestClient(create_app(tmp_path / "test.duckdb")) as client:
         created = client.post("/backtests", json=_backtest_payload()).json()
