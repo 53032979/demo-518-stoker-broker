@@ -12,3 +12,48 @@ body {
   min-height: 100vh;
   padding: 24px;
 }
+
+.workbench {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 16px;
+  min-height: 100vh;
+  padding: 16px;
+}
+
+.control-panel,
+.result-panel {
+  background: #ffffff;
+  border: 1px solid #d9dee7;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.control-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.control-panel label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.control-panel select,
+.control-panel button {
+  min-height: 36px;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(110px, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 900px) {
+  .workbench {
+    grid-template-columns: 1fr;
+  }
+}
