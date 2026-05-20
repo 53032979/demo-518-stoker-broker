@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from backend.app.api.routes import backtests, data, pools, strategies
@@ -49,6 +50,17 @@ def create_app(duckdb_path: str | Path | None = None) -> FastAPI:
                 "code": exc.code,
                 "message": str(exc),
                 "details": _json_safe(exc.details),
+            },
+        )
+
+    @app.exception_handler(RequestValidationError)
+    def handle_request_validation_error(_, exc: RequestValidationError) -> JSONResponse:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "code": "request_validation_error",
+                "message": "请求参数校验失败",
+                "details": _json_safe(exc.errors()),
             },
         )
 

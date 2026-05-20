@@ -164,6 +164,40 @@ def test_backtest_endpoint_rejects_non_finite_raw_top_n(tmp_path):
         assert payload["details"]["top_n"] == "inf"
 
 
+def test_backtest_endpoint_returns_structured_error_for_non_finite_request_validation(
+    tmp_path,
+):
+    raw_payload = """
+    {
+      "strategy_id": "momentum_top_n",
+      "pool_id": "csi300",
+      "start_date": "2024-01-01",
+      "end_date": "2024-01-10",
+      "parameters": {"top_n": 2, "rebalance": "monthly", "weighting": "equal"},
+      "costs": {
+        "commission_rate": 1e999,
+        "stamp_tax_rate": 0,
+        "slippage_bps": 0,
+        "min_lot_size": 100
+      }
+    }
+    """
+    with TestClient(
+        create_app(tmp_path / "test.duckdb"),
+        raise_server_exceptions=False,
+    ) as client:
+        response = client.post(
+            "/backtests",
+            content=raw_payload,
+            headers={"content-type": "application/json"},
+        )
+
+        assert response.status_code == 400
+        payload = response.json()
+        assert payload["code"] == "request_validation_error"
+        assert payload["details"]
+
+
 def test_backtest_endpoint_rejects_weekend_only_seed_range(tmp_path):
     payload = _backtest_payload()
     payload["start_date"] = "2024-01-06"
