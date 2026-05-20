@@ -17,6 +17,10 @@ type Props = {
   onUpload?: (file: File) => void;
 };
 
+function positiveInteger(value: number) {
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 1;
+}
+
 export function StrategyPanel({ strategies, pools, config, onConfigChange, onRun, onUpload }: Props) {
   const updateConfig = (updates: Partial<StrategyRunConfig>) => {
     onConfigChange({ ...config, ...updates });
@@ -69,9 +73,10 @@ export function StrategyPanel({ strategies, pools, config, onConfigChange, onRun
           type="number"
           value={config.top_n}
           min={1}
+          step={1}
           onChange={(event) => {
             const topN = Number(event.currentTarget.value);
-            updateConfig({ top_n: Number.isFinite(topN) && topN > 0 ? topN : 1 });
+            updateConfig({ top_n: positiveInteger(topN) });
           }}
         />
       </label>

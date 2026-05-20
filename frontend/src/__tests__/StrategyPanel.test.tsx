@@ -35,5 +35,6 @@ describe("StrategyPanel", () => {
 
     expect(screen.getByText("动量 Top N")).toBeInTheDocument();
     expect(screen.getByText("沪深300")).toBeInTheDocument();
+    expect(screen.getByLabelText("持仓数量")).toHaveAttribute("step", "1");
   });
 });

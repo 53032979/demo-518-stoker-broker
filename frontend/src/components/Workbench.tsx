@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchPools, fetchStrategies, runBacktest, uploadDailyBars } from "../api/client";
 import type { BacktestResult, StockPool, StrategyTemplate } from "../types";
 import { Charts } from "./Charts";
@@ -36,6 +36,10 @@ function message(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
+function positiveInteger(value: number) {
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 1;
+}
+
 export function Workbench() {
   const [strategies, setStrategies] = useState<StrategyTemplate[]>(FALLBACK_STRATEGIES);
   const [pools, setPools] = useState<StockPool[]>(FALLBACK_POOLS);
@@ -45,6 +49,8 @@ export function Workbench() {
   const [loadError, setLoadError] = useState<string>();
   const [actionStatus, setActionStatus] = useState<string>();
   const [actionError, setActionError] = useState<string>();
+  const actionSequence = useRef(0);
+  const suppressLoadError = useRef(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -83,10 +89,10 @@ export function Workbench() {
 
         if (strategyError && poolError) {
           setLoadStatus("配置加载失败，已使用默认配置");
-          setLoadError(`${strategyError}；${poolError}`);
+          setLoadError(suppressLoadError.current ? undefined : `${strategyError}；${poolError}`);
         } else if (strategyError || poolError) {
           setLoadStatus("部分配置加载失败，已使用默认配置");
-          setLoadError(strategyError ?? poolError);
+          setLoadError(suppressLoadError.current ? undefined : strategyError ?? poolError);
         } else {
           setLoadStatus("准备就绪");
           setLoadError(undefined);
@@ -99,6 +105,8 @@ export function Workbench() {
   }, []);
 
   const handleRun = async (runConfig: StrategyRunConfig) => {
+    const sequence = actionSequence.current + 1;
+    actionSequence.current = sequence;
     setActionError(undefined);
     setActionStatus("回测运行中...");
     try {
@@ -107,7 +115,7 @@ export function Workbench() {
         pool_id: runConfig.pool_id,
         start_date: runConfig.start_date,
         end_date: runConfig.end_date,
-        parameters: { top_n: runConfig.top_n, rebalance: "monthly", weighting: "equal" },
+        parameters: { top_n: positiveInteger(runConfig.top_n), rebalance: "monthly", weighting: "equal" },
         costs: {
           commission_rate: 0.0003,
           stamp_tax_rate: 0.001,
@@ -115,25 +123,33 @@ export function Workbench() {
           min_lot_size: 100,
         },
       });
+      if (actionSequence.current !== sequence) return;
       setResult(backtestResult);
       setActionStatus(backtestResult.status === "completed" ? "回测完成" : `回测状态：${backtestResult.status}`);
       setActionError(undefined);
+      suppressLoadError.current = true;
       setLoadError(undefined);
     } catch (runError) {
+      if (actionSequence.current !== sequence) return;
       setActionError(message(runError, "回测运行失败"));
       setActionStatus("回测失败");
     }
   };
 
   const handleUpload = async (file: File) => {
+    const sequence = actionSequence.current + 1;
+    actionSequence.current = sequence;
     setActionError(undefined);
     setActionStatus("正在上传数据文件...");
     try {
       const uploadResult = await uploadDailyBars(file);
+      if (actionSequence.current !== sequence) return;
       setActionStatus(`上传完成：${uploadResult.rows} 行，${uploadResult.symbols} 个标的`);
       setActionError(undefined);
+      suppressLoadError.current = true;
       setLoadError(undefined);
     } catch (uploadError) {
+      if (actionSequence.current !== sequence) return;
       setActionError(message(uploadError, "数据上传失败"));
       setActionStatus("上传失败");
     }

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Workbench } from "../components/Workbench";
 
@@ -48,6 +48,42 @@ function errorJson(message: string) {
   };
 }
 
+function completedBacktest(totalReturn: number) {
+  return okJson({
+    run_id: `run-${totalReturn}`,
+    status: "completed",
+    result: {
+      metrics: {
+        total_return: totalReturn,
+        annual_return: 0.18,
+        max_drawdown: -0.08,
+        sharpe: 1.23,
+        win_rate: 0.55,
+      },
+      equity_curve: [{ trade_date: "2024-01-31", equity: 1 + totalReturn }],
+      positions: [{ symbol: "000001.SZ", weight: 1 }],
+      trades: [{ symbol: "000001.SZ", side: "buy" }],
+      logs: ["done"],
+    },
+  });
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((innerResolve, innerReject) => {
+    resolve = innerResolve;
+    reject = innerReject;
+  });
+  return { promise, resolve, reject };
+}
+
+async function flushPromises() {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 function stubFetch(
   routes: Partial<{
     strategies: unknown;
@@ -69,20 +105,7 @@ function stubFetch(
       return response;
     }
     if (url.endsWith("/backtests")) {
-      return (
-        routes.backtest ??
-        okJson({
-          run_id: "run-1",
-          status: "completed",
-          result: {
-            metrics: { total_return: 0.12, annual_return: 0.18, max_drawdown: -0.08, sharpe: 1.23, win_rate: 0.55 },
-            equity_curve: [{ trade_date: "2024-01-31", equity: 1.12 }],
-            positions: [{ symbol: "000001.SZ", weight: 1 }],
-            trades: [{ symbol: "000001.SZ", side: "buy" }],
-            logs: ["done"],
-          },
-        })
-      );
+      return routes.backtest ?? completedBacktest(0.12);
     }
     if (url.endsWith("/data/uploads")) {
       return routes.upload ?? okJson({ status: "validated", rows: 12, symbols: 3, start_date: "2024-01-01", end_date: "2024-01-31" });
@@ -120,7 +143,7 @@ describe("Workbench", () => {
     fireEvent.change(screen.getByLabelText("股票池"), { target: { value: "zz500" } });
     fireEvent.change(screen.getByLabelText("开始日期"), { target: { value: "2024-02-01" } });
     fireEvent.change(screen.getByLabelText("结束日期"), { target: { value: "2024-10-31" } });
-    fireEvent.change(screen.getByLabelText("持仓数量"), { target: { value: "7" } });
+    fireEvent.change(screen.getByLabelText("持仓数量"), { target: { value: "7.8" } });
     fireEvent.click(screen.getByRole("button", { name: "运行回测" }));
 
     await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith("/backtests"))).toBe(true));
@@ -131,6 +154,72 @@ describe("Workbench", () => {
       end_date: "2024-10-31",
       parameters: { top_n: 7, rebalance: "monthly", weighting: "equal" },
     });
+  });
+
+  it("keeps the latest run result when an earlier run finishes later", async () => {
+    const firstRun = deferred<ReturnType<typeof completedBacktest>>();
+    const secondRun = deferred<ReturnType<typeof completedBacktest>>();
+    let runCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/strategies")) return okJson(strategies);
+        if (url.endsWith("/pools")) return okJson(pools);
+        if (url.endsWith("/backtests")) {
+          runCount += 1;
+          return runCount === 1 ? firstRun.promise : secondRun.promise;
+        }
+        return errorJson("Unexpected request");
+      }),
+    );
+    render(<Workbench />);
+
+    await screen.findByText("准备就绪");
+    fireEvent.click(screen.getByRole("button", { name: "运行回测" }));
+    fireEvent.click(screen.getByRole("button", { name: "运行回测" }));
+
+    await act(async () => {
+      secondRun.resolve(completedBacktest(0.22));
+      await flushPromises();
+    });
+    expect(await screen.findByText("22.00%")).toBeInTheDocument();
+
+    await act(async () => {
+      firstRun.resolve(completedBacktest(0.01));
+      await flushPromises();
+    });
+    expect(screen.getByText("22.00%")).toBeInTheDocument();
+    expect(screen.queryByText("1.00%")).not.toBeInTheDocument();
+  });
+
+  it("keeps late load errors hidden after a successful run", async () => {
+    const strategyLoad = deferred<ReturnType<typeof errorJson>>();
+    const poolLoad = deferred<ReturnType<typeof errorJson>>();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/strategies")) return strategyLoad.promise;
+        if (url.endsWith("/pools")) return poolLoad.promise;
+        if (url.endsWith("/backtests")) return completedBacktest(0.12);
+        return errorJson("Unexpected request");
+      }),
+    );
+    render(<Workbench />);
+
+    fireEvent.click(screen.getByRole("button", { name: "运行回测" }));
+    expect(await screen.findByText("回测完成")).toBeInTheDocument();
+
+    await act(async () => {
+      strategyLoad.resolve(errorJson("late strategy unavailable"));
+      poolLoad.resolve(errorJson("late pool unavailable"));
+      await flushPromises();
+    });
+
+    expect(screen.getByText("回测完成")).toBeInTheDocument();
+    expect(screen.queryByText(/late strategy unavailable/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/late pool unavailable/)).not.toBeInTheDocument();
   });
 
   it("keeps fallback controls available when config loading fails", async () => {
