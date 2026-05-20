@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchStrategies, runBacktest, uploadDailyBars } from "../api/client";
+import { createPool, fetchStrategies, runBacktest, uploadDailyBars } from "../api/client";
 import type { BacktestPayload } from "../types";
 
 afterEach(() => {
@@ -76,5 +76,23 @@ describe("api client", () => {
     );
     expect(init.body).toBeInstanceOf(FormData);
     expect(init.headers).toBeUndefined();
+  });
+
+  it("creates custom pools as JSON", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ pool_id: "custom-1", name: "自定义股票池", pool_type: "custom", symbols: ["000001.SZ"] }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createPool({ name: "自定义股票池", symbols: ["000001.SZ"] });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/pools",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ name: "自定义股票池", symbols: ["000001.SZ"] }),
+      }),
+    );
   });
 });

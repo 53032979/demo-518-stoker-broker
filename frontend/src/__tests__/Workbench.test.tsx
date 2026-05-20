@@ -13,8 +13,16 @@ const strategies = [
     name: "动量 Top N",
     category: "momentum",
     description: "",
-    parameter_schema: {},
-    default_parameters: {},
+    parameter_schema: {
+      type: "object",
+      properties: {
+        top_n: { type: "integer", title: "持仓数量", minimum: 1 },
+        lookback: { type: "integer", title: "回看窗口", minimum: 1 },
+        rebalance: { type: "string", title: "调仓频率", enum: ["weekly", "monthly"] },
+        weighting: { type: "string", title: "权重方式", enum: ["equal", "score"] },
+      },
+    },
+    default_parameters: { top_n: 2, lookback: 60, rebalance: "monthly", weighting: "equal" },
     required_fields: [],
   },
   {
@@ -22,8 +30,22 @@ const strategies = [
     name: "低估值策略",
     category: "value",
     description: "",
-    parameter_schema: {},
-    default_parameters: {},
+    parameter_schema: {
+      type: "object",
+      properties: {
+        top_n: { type: "integer", title: "持仓数量", minimum: 1 },
+        weighting: { type: "string", title: "权重方式", enum: ["equal", "cap"] },
+        weights: {
+          type: "object",
+          title: "因子权重",
+          properties: {
+            value: { type: "number", title: "价值权重" },
+            quality: { type: "number", title: "质量权重" },
+          },
+        },
+      },
+    },
+    default_parameters: { top_n: 4, weighting: "cap", weights: { value: 0.8, quality: 0.2 } },
     required_fields: [],
   },
 ];
@@ -60,9 +82,12 @@ function completedBacktest(totalReturn: number) {
         sharpe: 1.23,
         win_rate: 0.55,
       },
-      equity_curve: [{ trade_date: "2024-01-31", equity: 1 + totalReturn }],
-      positions: [{ symbol: "000001.SZ", weight: 1 }],
-      trades: [{ symbol: "000001.SZ", side: "buy" }],
+      equity_curve: [
+        { trade_date: "2024-01-31", equity: 1 },
+        { trade_date: "2024-02-29", equity: 1 + totalReturn },
+      ],
+      positions: [{ symbol: "000001.SZ", weight: 1, market_value: 12000 }],
+      trades: [{ trade_date: "2024-02-01", symbol: "000001.SZ", side: "buy", price: 12.3, quantity: 1000 }],
       logs: ["done"],
     },
   });
@@ -90,16 +115,17 @@ function stubFetch(
     pools: unknown;
     backtest: unknown;
     upload: unknown;
+    createPool: unknown;
   }> = {},
 ) {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.endsWith("/strategies")) {
       const response = routes.strategies ?? okJson(strategies);
       if (response instanceof Error) throw response;
       return response;
     }
-    if (url.endsWith("/pools")) {
+    if (url.endsWith("/pools") && init?.method !== "POST") {
       const response = routes.pools ?? okJson(pools);
       if (response instanceof Error) throw response;
       return response;
@@ -109,6 +135,9 @@ function stubFetch(
     }
     if (url.endsWith("/data/uploads")) {
       return routes.upload ?? okJson({ status: "validated", rows: 12, symbols: 3, start_date: "2024-01-01", end_date: "2024-01-31" });
+    }
+    if (url.endsWith("/pools") && init?.method === "POST") {
+      return routes.createPool ?? okJson({ pool_id: "custom-1", name: "自定义股票池", pool_type: "custom", symbols: ["000001.SZ"] });
     }
     return errorJson("Unexpected request");
   });
@@ -144,6 +173,7 @@ describe("Workbench", () => {
     fireEvent.change(screen.getByLabelText("开始日期"), { target: { value: "2024-02-01" } });
     fireEvent.change(screen.getByLabelText("结束日期"), { target: { value: "2024-10-31" } });
     fireEvent.change(screen.getByLabelText("持仓数量"), { target: { value: "7.8" } });
+    fireEvent.change(screen.getByLabelText("权重方式"), { target: { value: "equal" } });
     fireEvent.click(screen.getByRole("button", { name: "运行回测" }));
 
     await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith("/backtests"))).toBe(true));
@@ -152,7 +182,22 @@ describe("Workbench", () => {
       pool_id: "zz500",
       start_date: "2024-02-01",
       end_date: "2024-10-31",
-      parameters: { top_n: 7, rebalance: "monthly", weighting: "equal" },
+      parameters: { top_n: 7, weighting: "equal", weights: { value: 0.8, quality: 0.2 } },
+    });
+  });
+
+  it("resets parameters to the selected strategy defaults", async () => {
+    const fetchMock = stubFetch();
+    render(<Workbench />);
+
+    await screen.findByText("低估值策略");
+    fireEvent.change(screen.getByLabelText("策略模板"), { target: { value: "value_low_pe" } });
+    fireEvent.click(screen.getByRole("button", { name: "运行回测" }));
+
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith("/backtests"))).toBe(true));
+    expect(backtestPayload(fetchMock)).toMatchObject({
+      strategy_id: "value_low_pe",
+      parameters: { top_n: 4, weighting: "cap", weights: { value: 0.8, quality: 0.2 } },
     });
   });
 
@@ -240,8 +285,10 @@ describe("Workbench", () => {
 
     expect(await screen.findByText("回测完成")).toBeInTheDocument();
     expect(screen.getByText("12.00%")).toBeInTheDocument();
-    expect(screen.getByText("资金曲线 / 回撤曲线")).toBeInTheDocument();
-    expect(screen.getAllByText("1 条")).toHaveLength(3);
+    expect(screen.getByLabelText("资金曲线与回撤")).toBeInTheDocument();
+    expect(screen.getAllByText("000001.SZ").length).toBeGreaterThan(0);
+    expect(screen.getByText("buy")).toBeInTheDocument();
+    expect(screen.getByText("done")).toBeInTheDocument();
   });
 
   it("shows run failure errors", async () => {
@@ -256,7 +303,16 @@ describe("Workbench", () => {
   });
 
   it("shows upload success status", async () => {
-    stubFetch();
+    const fetchMock = stubFetch({
+      upload: okJson({
+        status: "validated",
+        rows: 12,
+        symbols: 3,
+        start_date: "2024-01-01",
+        end_date: "2024-01-31",
+        pool: { pool_id: "upload-1", name: "上传股票池", pool_type: "custom", symbols: ["600000.SH"] },
+      }),
+    });
     render(<Workbench />);
 
     await screen.findByText("准备就绪");
@@ -265,6 +321,26 @@ describe("Workbench", () => {
     });
 
     expect(await screen.findByText("上传完成：12 行，3 个标的")).toBeInTheDocument();
+    expect(screen.getByLabelText("股票池")).toHaveValue("upload-1");
+
+    fireEvent.click(screen.getByRole("button", { name: "运行回测" }));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith("/backtests"))).toBe(true));
+    expect(backtestPayload(fetchMock)).toMatchObject({ pool_id: "upload-1" });
+  });
+
+  it("saves and selects a custom pool", async () => {
+    const fetchMock = stubFetch();
+    render(<Workbench />);
+
+    await screen.findByText("准备就绪");
+    fireEvent.change(screen.getByLabelText("自定义股票池标的"), { target: { value: "000001.SZ\n600000.SH" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存股票池" }));
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([input, init]) => String(input).endsWith("/pools") && init?.method === "POST")).toBe(true),
+    );
+    expect(screen.getByLabelText("股票池")).toHaveValue("custom-1");
+    expect(screen.getByText("自定义股票池")).toBeInTheDocument();
   });
 
   it("shows upload failure errors", async () => {

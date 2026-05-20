@@ -1,4 +1,4 @@
-import type { BacktestPayload, BacktestResult, StockPool, StrategyTemplate } from "../types";
+import type { BacktestPayload, BacktestResult, CreatePoolPayload, StockPool, StrategyTemplate, UploadDailyBarsResult } from "../types";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000";
 
@@ -28,6 +28,13 @@ export function fetchPools(): Promise<StockPool[]> {
   return requestJson<StockPool[]>("/pools");
 }
 
+export function createPool(payload: CreatePoolPayload): Promise<StockPool> {
+  return requestJson<StockPool>("/pools", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function runBacktest(payload: BacktestPayload): Promise<BacktestResult> {
   return requestJson<BacktestResult>("/backtests", {
     method: "POST",
@@ -35,13 +42,7 @@ export function runBacktest(payload: BacktestPayload): Promise<BacktestResult> {
   });
 }
 
-export async function uploadDailyBars(file: File): Promise<{
-  status: string;
-  rows: number;
-  symbols: number;
-  start_date: string;
-  end_date: string;
-}> {
+export async function uploadDailyBars(file: File): Promise<UploadDailyBarsResult> {
   const form = new FormData();
   form.append("file", file);
   const response = await fetch(`${API_BASE}/data/uploads`, {

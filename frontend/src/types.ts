@@ -1,10 +1,24 @@
+export type StrategyParameterValue = string | number | boolean | null | Record<string, string | number | boolean | null>;
+
+export type StrategyParameters = Record<string, StrategyParameterValue>;
+
+export type StrategyParameterSchema = {
+  type?: string;
+  title?: string;
+  description?: string;
+  enum?: Array<string | number>;
+  minimum?: number;
+  maximum?: number;
+  properties?: Record<string, StrategyParameterSchema>;
+};
+
 export type StrategyTemplate = {
   strategy_id: string;
   name: string;
   category: string;
   description: string;
-  parameter_schema: Record<string, unknown>;
-  default_parameters: Record<string, unknown>;
+  parameter_schema: StrategyParameterSchema;
+  default_parameters: StrategyParameters;
   required_fields: string[];
 };
 
@@ -13,6 +27,7 @@ export type StockPool = {
   name: string;
   pool_type: "index" | "custom";
   symbols: string[];
+  source?: string;
 };
 
 export type BacktestPayload = {
@@ -20,7 +35,7 @@ export type BacktestPayload = {
   pool_id: string;
   start_date: string;
   end_date: string;
-  parameters: Record<string, unknown>;
+  parameters: StrategyParameters;
   costs: {
     commission_rate: number;
     stamp_tax_rate: number;
@@ -41,4 +56,18 @@ export type BacktestResult = {
     trades: Array<Record<string, BacktestRowValue>>;
     logs: string[];
   };
+};
+
+export type UploadDailyBarsResult = {
+  status: string;
+  rows: number;
+  symbols: number;
+  start_date: string;
+  end_date: string;
+  pool?: StockPool;
+};
+
+export type CreatePoolPayload = {
+  name?: string;
+  symbols: string[];
 };

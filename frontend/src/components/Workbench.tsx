@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { fetchPools, fetchStrategies, runBacktest, uploadDailyBars } from "../api/client";
-import type { BacktestResult, StockPool, StrategyTemplate } from "../types";
+import { createPool, fetchPools, fetchStrategies, runBacktest, uploadDailyBars } from "../api/client";
+import type { BacktestResult, StockPool, StrategyParameters, StrategyTemplate } from "../types";
 import { Charts } from "./Charts";
 import { ResultSummary } from "./ResultSummary";
 import { StrategyPanel, type StrategyRunConfig } from "./StrategyPanel";
@@ -13,7 +13,7 @@ const DEFAULT_CONFIG: StrategyRunConfig = {
   pool_id: FALLBACK_POOL_ID,
   start_date: "2024-01-01",
   end_date: "2024-12-31",
-  top_n: 2,
+  parameters: { top_n: 2, rebalance: "monthly", weighting: "equal" },
 };
 
 const FALLBACK_STRATEGIES: StrategyTemplate[] = [
@@ -22,8 +22,15 @@ const FALLBACK_STRATEGIES: StrategyTemplate[] = [
     name: "动量 Top N",
     category: "momentum",
     description: "",
-    parameter_schema: {},
-    default_parameters: {},
+    parameter_schema: {
+      type: "object",
+      properties: {
+        top_n: { type: "integer", title: "持仓数量", minimum: 1 },
+        rebalance: { type: "string", title: "调仓频率", enum: ["weekly", "monthly"] },
+        weighting: { type: "string", title: "权重方式", enum: ["equal", "score"] },
+      },
+    },
+    default_parameters: { top_n: 2, rebalance: "monthly", weighting: "equal" },
     required_fields: [],
   },
 ];
@@ -36,8 +43,21 @@ function message(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
-function positiveInteger(value: number) {
-  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 1;
+function mergePool(pools: StockPool[], pool: StockPool) {
+  const exists = pools.some((candidate) => candidate.pool_id === pool.pool_id);
+  return exists ? pools.map((candidate) => (candidate.pool_id === pool.pool_id ? pool : candidate)) : [...pools, pool];
+}
+
+function cloneParameters(parameters: StrategyParameters): StrategyParameters {
+  return JSON.parse(JSON.stringify(parameters)) as StrategyParameters;
+}
+
+function defaultsFor(strategies: StrategyTemplate[], strategyId: string) {
+  return cloneParameters(strategies.find((strategy) => strategy.strategy_id === strategyId)?.default_parameters ?? {});
+}
+
+function sameParameters(left: StrategyParameters, right: StrategyParameters) {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 export function Workbench() {
@@ -77,15 +97,21 @@ export function Workbench() {
 
         setStrategies(nextStrategies);
         setPools(nextPools);
-        setConfig((currentConfig) => ({
-          ...currentConfig,
-          strategy_id: nextStrategies.some((strategy) => strategy.strategy_id === currentConfig.strategy_id)
-            ? currentConfig.strategy_id
-            : nextStrategies[0]?.strategy_id ?? FALLBACK_STRATEGY_ID,
-          pool_id: nextPools.some((pool) => pool.pool_id === currentConfig.pool_id)
-            ? currentConfig.pool_id
-            : nextPools[0]?.pool_id ?? FALLBACK_POOL_ID,
-        }));
+        setConfig((currentConfig) => {
+          const strategyExists = nextStrategies.some((strategy) => strategy.strategy_id === currentConfig.strategy_id);
+          const strategyId = strategyExists ? currentConfig.strategy_id : nextStrategies[0]?.strategy_id ?? FALLBACK_STRATEGY_ID;
+          const shouldPreserveParameters = strategyExists && !sameParameters(currentConfig.parameters, DEFAULT_CONFIG.parameters);
+          return {
+            ...currentConfig,
+            strategy_id: strategyId,
+            pool_id: nextPools.some((pool) => pool.pool_id === currentConfig.pool_id)
+              ? currentConfig.pool_id
+              : nextPools[0]?.pool_id ?? FALLBACK_POOL_ID,
+            parameters: shouldPreserveParameters
+              ? { ...defaultsFor(nextStrategies, strategyId), ...currentConfig.parameters }
+              : defaultsFor(nextStrategies, strategyId),
+          };
+        });
 
         if (strategyError && poolError) {
           setLoadStatus("配置加载失败，已使用默认配置");
@@ -115,7 +141,7 @@ export function Workbench() {
         pool_id: runConfig.pool_id,
         start_date: runConfig.start_date,
         end_date: runConfig.end_date,
-        parameters: { top_n: positiveInteger(runConfig.top_n), rebalance: "monthly", weighting: "equal" },
+        parameters: runConfig.parameters,
         costs: {
           commission_rate: 0.0003,
           stamp_tax_rate: 0.001,
@@ -144,6 +170,18 @@ export function Workbench() {
     try {
       const uploadResult = await uploadDailyBars(file);
       if (actionSequence.current !== sequence) return;
+      if (uploadResult.pool) {
+        setPools((currentPools) => mergePool(currentPools, uploadResult.pool as StockPool));
+        setConfig((currentConfig) => ({ ...currentConfig, pool_id: uploadResult.pool?.pool_id ?? currentConfig.pool_id }));
+      } else {
+        try {
+          const refreshedPools = await fetchPools();
+          if (actionSequence.current !== sequence) return;
+          setPools(refreshedPools.length > 0 ? refreshedPools : FALLBACK_POOLS);
+        } catch {
+          if (actionSequence.current !== sequence) return;
+        }
+      }
       setActionStatus(`上传完成：${uploadResult.rows} 行，${uploadResult.symbols} 个标的`);
       setActionError(undefined);
       suppressLoadError.current = true;
@@ -152,6 +190,27 @@ export function Workbench() {
       if (actionSequence.current !== sequence) return;
       setActionError(message(uploadError, "数据上传失败"));
       setActionStatus("上传失败");
+    }
+  };
+
+  const handleCreatePool = async (symbols: string[]) => {
+    const sequence = actionSequence.current + 1;
+    actionSequence.current = sequence;
+    setActionError(undefined);
+    setActionStatus("正在保存股票池...");
+    try {
+      const pool = await createPool({ name: "自定义股票池", symbols });
+      if (actionSequence.current !== sequence) return;
+      setPools((currentPools) => mergePool(currentPools, pool));
+      setConfig((currentConfig) => ({ ...currentConfig, pool_id: pool.pool_id }));
+      setActionStatus(`股票池已保存：${pool.symbols.length} 个标的`);
+      setActionError(undefined);
+      suppressLoadError.current = true;
+      setLoadError(undefined);
+    } catch (poolError) {
+      if (actionSequence.current !== sequence) return;
+      setActionError(message(poolError, "股票池保存失败"));
+      setActionStatus("股票池保存失败");
     }
   };
 
@@ -167,6 +226,7 @@ export function Workbench() {
         onConfigChange={setConfig}
         onRun={handleRun}
         onUpload={handleUpload}
+        onCreatePool={handleCreatePool}
       />
       <section className="result-panel">
         <header className="result-header">
