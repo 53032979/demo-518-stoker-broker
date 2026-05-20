@@ -71,8 +71,15 @@ function drawdownPoints(points: Point[]) {
   });
 }
 
-function tradePoints(result?: BacktestResult) {
+function displayedSymbol(result?: BacktestResult) {
+  const firstTradeSymbol = rowSymbol(result?.result?.trades?.[0] ?? {});
+  const firstBarSymbol = rowSymbol(result?.result?.price_bars?.[0] ?? {});
+  return firstTradeSymbol ?? firstBarSymbol;
+}
+
+function tradePoints(result?: BacktestResult, symbol?: string) {
   return (result?.result?.trades ?? [])
+    .filter((row) => !symbol || rowSymbol(row) === symbol)
     .map((row, index) => {
       const value = rowPrice(row);
       return value === undefined
@@ -86,11 +93,8 @@ function tradePoints(result?: BacktestResult) {
     .filter((point): point is Point & { side: string } => Boolean(point));
 }
 
-function priceBars(result?: BacktestResult) {
+function priceBars(result?: BacktestResult, symbol?: string) {
   const bars = result?.result?.price_bars ?? [];
-  const trades = result?.result?.trades ?? [];
-  const tradedSymbol = rowSymbol(trades[0] ?? {});
-  const symbol = tradedSymbol ?? rowSymbol(bars[0] ?? {});
   return bars
     .filter((row) => !symbol || rowSymbol(row) === symbol)
     .map((row, index) => {
@@ -113,8 +117,9 @@ function priceBars(result?: BacktestResult) {
 export function Charts({ result }: Props) {
   const equity = equityPoints(result);
   const drawdown = drawdownPoints(equity);
-  const trades = tradePoints(result);
-  const bars = priceBars(result);
+  const symbol = displayedSymbol(result);
+  const trades = tradePoints(result, symbol);
+  const bars = priceBars(result, symbol);
   const hasEquity = equity.length > 0;
   const hasPriceBars = bars.length > 0;
   const scaledEquity = scale(equity);

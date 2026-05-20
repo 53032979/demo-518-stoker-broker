@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 import { Tables } from "../components/Tables";
 import type { BacktestResult } from "../types";
 
@@ -18,6 +18,10 @@ const result: BacktestResult = {
   },
 };
 
+afterEach(() => {
+  cleanup();
+});
+
 describe("Tables", () => {
   it("renders holdings, trades, and logs as actual rows", () => {
     render(<Tables result={result} />);
@@ -31,5 +35,27 @@ describe("Tables", () => {
     expect(screen.getByText("sell")).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "运行日志" })).toBeInTheDocument();
     expect(screen.getByText("loaded 2 symbols")).toBeInTheDocument();
+  });
+
+  it("shows no current holdings when final equity date has no positions", () => {
+    render(
+      <Tables
+        result={{
+          ...result,
+          result: {
+            ...result.result!,
+            equity_curve: [
+              { trade_date: "2024-01-02", equity: 100000 },
+              { trade_date: "2024-01-03", equity: 99000 },
+            ],
+            positions: [{ trade_date: "2024-01-02", symbol: "STALE.SZ", market_value: 9000 }],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("table", { name: "当前持仓" })).toBeInTheDocument();
+    expect(screen.queryByText("STALE.SZ")).not.toBeInTheDocument();
+    expect(screen.getByText("暂无数据")).toBeInTheDocument();
   });
 });

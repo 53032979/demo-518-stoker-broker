@@ -39,4 +39,24 @@ describe("Charts", () => {
     expect(container.querySelectorAll('[data-marker="buy"]')).toHaveLength(1);
     expect(container.querySelectorAll('[data-marker="sell"]')).toHaveLength(1);
   });
+
+  it("uses only displayed symbol trades for K-line markers", () => {
+    const { container } = render(
+      <Charts
+        result={{
+          ...result,
+          result: {
+            ...result.result!,
+            trades: [
+              { trade_date: "2024-01-01", symbol: "000001.SZ", side: "buy", price: 10 },
+              { trade_date: "2024-01-02", symbol: "OTHER.SZ", side: "sell", price: 99 },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(container.querySelectorAll('[data-marker="buy"]')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-marker="sell"]')).toHaveLength(0);
+  });
 });

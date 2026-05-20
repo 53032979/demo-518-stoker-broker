@@ -18,7 +18,18 @@ function formatCell(value: unknown) {
   return String(value);
 }
 
-function currentRows(rows: Array<Record<string, unknown>>) {
+function finalEquityDate(result?: BacktestResult) {
+  const dates = (result?.result?.equity_curve ?? [])
+    .map((row) => (typeof row.trade_date === "string" ? row.trade_date : undefined))
+    .filter((date): date is string => Boolean(date))
+    .sort();
+  return dates[dates.length - 1];
+}
+
+function currentRows(rows: Array<Record<string, unknown>>, finalDate?: string) {
+  if (finalDate) {
+    return rows.filter((row) => String(row.trade_date) === finalDate);
+  }
   const datedRows = rows.filter((row) => typeof row.trade_date === "string");
   if (!datedRows.length) return rows;
   const sortedDates = datedRows
@@ -72,7 +83,7 @@ function DataTable({
 }
 
 export function Tables({ result }: Props) {
-  const positions = currentRows(result?.result?.positions ?? []);
+  const positions = currentRows(result?.result?.positions ?? [], finalEquityDate(result));
   const trades = result?.result?.trades ?? [];
   const logs = result?.result?.logs ?? [];
   return (

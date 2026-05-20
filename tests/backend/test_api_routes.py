@@ -189,6 +189,33 @@ def test_value_quality_uses_uploaded_factor_columns(tmp_path):
         assert traded_symbols == {"BBB.SZ"}
 
 
+def test_value_quality_uses_quality_factor_not_only_value(tmp_path):
+    csv_bytes = (
+        "symbol,trade_date,open,high,low,close,volume,amount,pe,pb,roe\n"
+        "CHEAP.SZ,2024-01-02,10,10.2,9.8,10,100000,1000000,5,0.7,0.01\n"
+        "QUALITY.SZ,2024-01-02,10,10.2,9.8,10,100000,1000000,7,0.8,0.40\n"
+    ).encode("utf-8")
+
+    with TestClient(create_app(tmp_path / "test.duckdb")) as client:
+        upload = client.post(
+            "/data/uploads",
+            files={"file": ("quality.csv", csv_bytes, "text/csv")},
+        )
+        payload = _backtest_payload(
+            {"top_n": 1, "rebalance": "monthly", "weighting": "equal"},
+            pool_id=upload.json()["pool"]["pool_id"],
+        )
+        payload["strategy_id"] = "value_quality"
+        payload["start_date"] = "2024-01-02"
+        payload["end_date"] = "2024-01-02"
+
+        response = client.post("/backtests", json=payload)
+
+        assert response.status_code == 200
+        traded_symbols = {trade["symbol"] for trade in response.json()["result"]["trades"]}
+        assert traded_symbols == {"QUALITY.SZ"}
+
+
 def test_ma_trend_filter_does_not_trade_when_all_symbols_are_downtrend(tmp_path):
     csv_bytes = (
         "symbol,trade_date,open,high,low,close,volume,amount\n"

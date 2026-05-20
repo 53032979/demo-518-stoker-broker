@@ -280,8 +280,8 @@ def _select_targets(
     elif strategy_id == "value_quality":
         selected = factor_frame.assign(
             score=(
-                factor_frame["value_score"] * 0.55
-                + factor_frame["liquidity_score"] * 0.35
+                factor_frame["value_score"] * 0.40
+                + factor_frame["quality_score"] * 0.50
                 + factor_frame["low_volatility_score"] * 0.10
             )
         ).sort_values(["score", "symbol"], ascending=[False, True]).head(top_n)
