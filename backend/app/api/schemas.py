@@ -1,7 +1,33 @@
 from datetime import date
+import re
 from typing import Any, Literal, Self
 
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+def normalize_symbol_list(symbols: list[str]) -> list[str]:
+    if any(not symbol.strip() for symbol in symbols):
+        raise ValueError("symbols must not contain blank codes")
+    normalized = [symbol.strip().upper() for symbol in symbols]
+    invalid = [
+        symbol
+        for symbol in normalized
+        if not re.fullmatch(r"[A-Z0-9.]+", symbol)
+        or symbol.startswith(".")
+        or symbol.endswith(".")
+    ]
+    if invalid:
+        raise ValueError(f"invalid symbols: {', '.join(invalid)}")
+    return normalized
+
+
+class PoolValidateRequest(BaseModel):
+    symbols: list[str] = Field(min_length=1)
+
+    @field_validator("symbols")
+    @classmethod
+    def normalize_symbols(cls, symbols: list[str]) -> list[str]:
+        return normalize_symbol_list(symbols)
 
 
 class CostConfig(BaseModel):
@@ -18,9 +44,7 @@ class PoolCreateRequest(BaseModel):
     @field_validator("symbols")
     @classmethod
     def normalize_symbols(cls, symbols: list[str]) -> list[str]:
-        if any(not symbol.strip() for symbol in symbols):
-            raise ValueError("symbols must not contain blank codes")
-        return [symbol.strip().upper() for symbol in symbols]
+        return normalize_symbol_list(symbols)
 
 
 class StockPoolResponse(BaseModel):

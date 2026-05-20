@@ -50,6 +50,30 @@ def test_pools_endpoint_returns_default_index_pools(tmp_path):
         assert {"csi300", "csi500", "csi1000"}.issubset(pool_ids)
 
 
+def test_custom_pool_create_validate_and_list(tmp_path):
+    with TestClient(create_app(tmp_path / "test.duckdb")) as client:
+        validate_response = client.post(
+            "/pools/validate",
+            json={"symbols": [" 000001.sz ", "600519.SH"]},
+        )
+        assert validate_response.status_code == 200
+        assert validate_response.json()["symbols"] == ["000001.SZ", "600519.SH"]
+
+        create_response = client.post(
+            "/pools",
+            json={"name": "核心池", "symbols": [" 000001.sz ", "600519.SH"]},
+        )
+
+        assert create_response.status_code == 200
+        pool = create_response.json()
+        assert pool["pool_type"] == "custom"
+        assert pool["symbols"] == ["000001.SZ", "600519.SH"]
+
+        list_response = client.get("/pools")
+        listed = {item["pool_id"]: item for item in list_response.json()}
+        assert listed[pool["pool_id"]] == pool
+
+
 def test_app_lifespan_releases_duckdb_connection(tmp_path):
     db_path = tmp_path / "test.duckdb"
 
@@ -69,6 +93,89 @@ def test_backtest_endpoint_returns_completed_result_for_seed_data(tmp_path):
         assert payload["status"] == "completed"
         assert payload["result"]["metrics"]["total_return"] is not None
         assert payload["result"]["equity_curve"]
+
+
+def test_strategy_ids_select_different_symbols_on_uploaded_data(tmp_path):
+    rows = [
+        "symbol,trade_date,open,high,low,close,volume,amount",
+        "AAA.SZ,2024-01-02,10,10.2,9.8,10,100000,1000000",
+        "AAA.SZ,2024-01-03,10.8,11.0,10.6,10.8,100000,1080000",
+        "AAA.SZ,2024-01-04,11.6,11.8,11.4,11.6,100000,1160000",
+        "BBB.SZ,2024-01-02,20,20.2,19.8,20,100000,2000000",
+        "BBB.SZ,2024-01-03,20.1,20.3,19.9,20.1,100000,2010000",
+        "BBB.SZ,2024-01-04,20.2,20.4,20.0,20.2,100000,2020000",
+    ]
+    csv_bytes = ("\n".join(rows) + "\n").encode("utf-8")
+
+    with TestClient(create_app(tmp_path / "test.duckdb")) as client:
+        upload = client.post(
+            "/data/uploads",
+            files={"file": ("strategy.csv", csv_bytes, "text/csv")},
+        )
+        pool_id = upload.json()["pool"]["pool_id"]
+        base_payload = _backtest_payload(
+            {"top_n": 1, "rebalance": "monthly", "weighting": "equal", "lookback": 2},
+            pool_id=pool_id,
+        )
+        base_payload["start_date"] = "2024-01-02"
+        base_payload["end_date"] = "2024-01-04"
+
+        momentum = client.post("/backtests", json=base_payload).json()
+        low_vol_payload = dict(base_payload, strategy_id="low_volatility")
+        low_vol = client.post("/backtests", json=low_vol_payload).json()
+
+        momentum_symbols = {trade["symbol"] for trade in momentum["result"]["trades"]}
+        low_vol_symbols = {trade["symbol"] for trade in low_vol["result"]["trades"]}
+        assert momentum_symbols == {"AAA.SZ"}
+        assert low_vol_symbols == {"BBB.SZ"}
+
+
+def test_uploaded_csv_pool_can_be_backtested_and_affects_run(tmp_path):
+    csv_bytes = (
+        "symbol,trade_date,open,high,low,close,volume,amount\n"
+        "ZZZ.SZ,2024-01-02,50,51,49,50,100000,5000000\n"
+        "ZZZ.SZ,2024-01-03,54.5,55,54,54.5,100000,5450000\n"
+        "YYY.SZ,2024-01-02,10,10.2,9.8,10,100000,1000000\n"
+        "YYY.SZ,2024-01-03,10.1,10.3,9.9,10.1,100000,1010000\n"
+    ).encode("utf-8")
+
+    with TestClient(create_app(tmp_path / "test.duckdb")) as client:
+        upload = client.post(
+            "/data/uploads",
+            files={"file": ("custom.csv", csv_bytes, "text/csv")},
+        )
+
+        assert upload.status_code == 200
+        pool = upload.json()["pool"]
+        payload = _backtest_payload(
+            {"top_n": 1, "rebalance": "monthly", "weighting": "equal", "lookback": 1},
+            pool_id=pool["pool_id"],
+        )
+        payload["start_date"] = "2024-01-02"
+        payload["end_date"] = "2024-01-03"
+
+        response = client.post("/backtests", json=payload)
+
+        assert response.status_code == 200
+        traded_symbols = {trade["symbol"] for trade in response.json()["result"]["trades"]}
+        assert traded_symbols == {"ZZZ.SZ"}
+
+
+def test_backtest_run_retrieval_endpoints_return_persisted_data(tmp_path):
+    with TestClient(create_app(tmp_path / "test.duckdb")) as client:
+        created = client.post("/backtests", json=_backtest_payload()).json()
+        run_id = created["run_id"]
+
+        full = client.get(f"/backtests/{run_id}")
+        status = client.get(f"/backtests/{run_id}/status")
+        results = client.get(f"/backtests/{run_id}/results")
+        logs = client.get(f"/backtests/{run_id}/logs")
+
+        assert full.status_code == 200
+        assert full.json() == created
+        assert status.json() == {"run_id": run_id, "status": "completed", "message": ""}
+        assert results.json() == created["result"]
+        assert logs.json() == {"run_id": run_id, "logs": created["result"]["logs"]}
 
 
 @pytest.mark.parametrize("pool_id", ["csi300", "csi500", "csi1000"])
@@ -99,6 +206,7 @@ def test_data_upload_endpoint_validates_and_persists_csv(tmp_path):
         assert response.status_code == 200
         assert response.json()["rows"] == 1
         assert response.json()["status"] == "validated"
+        assert response.json()["pool"]["symbols"] == ["000001.SZ"]
         persisted = client.app.state.repository.load_daily_bars(
             ["000001.SZ"],
             "2024-01-01",
@@ -242,6 +350,17 @@ def test_data_upload_endpoint_rejects_invalid_csv(tmp_path):
         response = client.post(
             "/data/uploads",
             files={"file": ("daily.csv", b'not,"valid\ncsv', "text/csv")},
+        )
+
+        assert response.status_code == 400
+        assert response.json()["code"] == "data_validation_error"
+
+
+def test_data_upload_endpoint_rejects_unknown_extension(tmp_path):
+    with TestClient(create_app(tmp_path / "test.duckdb")) as client:
+        response = client.post(
+            "/data/uploads",
+            files={"file": ("daily.txt", b"symbol,trade_date\n", "text/plain")},
         )
 
         assert response.status_code == 400

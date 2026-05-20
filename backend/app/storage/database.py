@@ -37,3 +37,15 @@ def initialize_schema(connection: duckdb.DuckDBPyConnection) -> None:
         )
         """
     )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS backtest_runs (
+            run_id VARCHAR PRIMARY KEY,
+            status VARCHAR NOT NULL,
+            request_payload VARCHAR NOT NULL,
+            response_payload VARCHAR NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
