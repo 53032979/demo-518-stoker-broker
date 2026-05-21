@@ -1,13 +1,16 @@
 from backend.app.domain.models import StrategyTemplate
 
 
+DEFAULT_TOP_N = 5
+
+
 def _schema(
     title: str,
     extra_properties: dict | None = None,
     weighting_default: str = "equal",
 ) -> dict:
     properties = {
-        "top_n": {"type": "integer", "minimum": 1, "maximum": 500, "default": 20},
+        "top_n": {"type": "integer", "minimum": 1, "maximum": 500, "default": DEFAULT_TOP_N},
         "rebalance": {
             "type": "string",
             "enum": ["weekly", "monthly", "quarterly"],
@@ -40,7 +43,7 @@ def get_strategy_templates() -> list[StrategyTemplate]:
             category="multi_factor",
             description="低 PE/PB 与质量因子过滤的 Top N 组合。",
             parameter_schema=_schema("低估值质量组合参数"),
-            default_parameters={"top_n": 20, "rebalance": "monthly", "weighting": "equal"},
+            default_parameters={"top_n": DEFAULT_TOP_N, "rebalance": "monthly", "weighting": "equal"},
             required_fields=["pe", "pb", "roe"],
         ),
         StrategyTemplate(
@@ -53,7 +56,7 @@ def get_strategy_templates() -> list[StrategyTemplate]:
                 {"lookback": {"type": "integer", "minimum": 1, "maximum": 252, "default": 60}},
             ),
             default_parameters={
-                "top_n": 20,
+                "top_n": DEFAULT_TOP_N,
                 "rebalance": "monthly",
                 "weighting": "equal",
                 "lookback": 60,
@@ -70,7 +73,7 @@ def get_strategy_templates() -> list[StrategyTemplate]:
                 {"lookback": {"type": "integer", "minimum": 1, "maximum": 252, "default": 60}},
             ),
             default_parameters={
-                "top_n": 20,
+                "top_n": DEFAULT_TOP_N,
                 "rebalance": "monthly",
                 "weighting": "equal",
                 "lookback": 60,
@@ -126,7 +129,7 @@ def get_strategy_templates() -> list[StrategyTemplate]:
                 weighting_default="factor_score",
             ),
             default_parameters={
-                "top_n": 20,
+                "top_n": DEFAULT_TOP_N,
                 "rebalance": "monthly",
                 "weighting": "factor_score",
                 "weights": {
@@ -152,7 +155,7 @@ def get_strategy_templates() -> list[StrategyTemplate]:
                 },
             ),
             default_parameters={
-                "top_n": 20,
+                "top_n": DEFAULT_TOP_N,
                 "rebalance": "monthly",
                 "weighting": "equal",
                 "ma_fast": 20,

@@ -80,6 +80,11 @@ export function StrategyPanel({ strategies, pools, config, onConfigChange, onRun
   const [customSymbols, setCustomSymbols] = useState("");
   const strategy = selectedStrategy(strategies, config.strategy_id);
   const parameters = effectiveParameters(strategy, config);
+  const pool = pools.find((candidate) => candidate.pool_id === config.pool_id);
+  const topN = Number(parameters.top_n);
+  const coversEntirePool = Boolean(
+    pool?.symbols.length && Number.isFinite(topN) && topN >= pool.symbols.length,
+  );
 
   const updateConfig = (updates: Partial<StrategyRunConfig>) => {
     onConfigChange({ ...config, ...updates });
@@ -244,6 +249,11 @@ export function StrategyPanel({ strategies, pools, config, onConfigChange, onRun
         </span>
       </label>
       {Object.entries(schemaProperties(strategy?.parameter_schema)).map(([name, schema]) => renderParameter(name, schema))}
+      {coversEntirePool ? (
+        <p className="parameter-warning" role="status">
+          top_n 已覆盖整个股票池，不同选股策略可能得到相同曲线
+        </p>
+      ) : null}
       <fieldset className="parameter-group">
         <legend>交易成本</legend>
         <label>

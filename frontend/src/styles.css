@@ -92,6 +92,17 @@ body {
   font-size: 12px;
 }
 
+.parameter-warning {
+  margin: -4px 0 0;
+  border: 1px solid #f0c36d;
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: #7a4b00;
+  background: #fff7e6;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .custom-pool-row {
   display: grid;
   gap: 8px;

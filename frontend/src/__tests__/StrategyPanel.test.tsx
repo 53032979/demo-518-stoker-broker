@@ -126,4 +126,25 @@ describe("StrategyPanel", () => {
       parameters: { ma_fast: 5, ma_slow: 20 },
     });
   });
+
+  it("warns when top_n covers the whole selected pool", () => {
+    render(
+      <StrategyPanel
+        strategies={strategies}
+        pools={[
+          {
+            pool_id: "csi300",
+            name: "沪深300",
+            pool_type: "index",
+            symbols: ["000001.SZ", "600000.SH"],
+          },
+        ]}
+        config={{ ...config, parameters: { ...config.parameters, top_n: 2 } }}
+        onConfigChange={vi.fn()}
+        onRun={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("top_n 已覆盖整个股票池，不同选股策略可能得到相同曲线")).toBeInTheDocument();
+  });
 });
