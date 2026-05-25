@@ -35,6 +35,7 @@ describe("Tables", () => {
     expect(screen.getByText("sell")).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "运行日志" })).toBeInTheDocument();
     expect(screen.getByText("loaded 2 symbols")).toBeInTheDocument();
+    expect(screen.getByText("2 rows")).toBeInTheDocument();
   });
 
   it("shows no current holdings when final equity date has no positions", () => {

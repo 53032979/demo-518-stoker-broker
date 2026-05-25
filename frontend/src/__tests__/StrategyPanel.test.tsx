@@ -79,6 +79,7 @@ describe("StrategyPanel", () => {
       />,
     );
 
+    expect(screen.getByText("Strategy Console")).toBeInTheDocument();
     expect(screen.getByText("动量 Top N")).toBeInTheDocument();
     expect(screen.getByText("沪深300")).toBeInTheDocument();
     expect(screen.getByLabelText("持仓数量")).toHaveAttribute("step", "1");
@@ -146,5 +147,25 @@ describe("StrategyPanel", () => {
     );
 
     expect(screen.getByText("top_n 已覆盖整个股票池，不同选股策略可能得到相同曲线")).toBeInTheDocument();
+  });
+
+  it("keeps the custom pool save action disabled until symbols are entered", () => {
+    render(
+      <StrategyPanel
+        strategies={strategies}
+        pools={pools}
+        config={config}
+        onConfigChange={vi.fn()}
+        onRun={vi.fn()}
+        onCreatePool={vi.fn()}
+      />,
+    );
+
+    const saveButton = screen.getByRole("button", { name: "保存股票池" });
+    expect(saveButton).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("自定义股票池标的"), { target: { value: "000001.SZ" } });
+
+    expect(saveButton).toBeEnabled();
   });
 });

@@ -66,6 +66,13 @@ function sameParameters(left: StrategyParameters, right: StrategyParameters) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+function statusTone(status: string, error?: string) {
+  if (error) return "status-error";
+  if (/中|正在|running|pending/i.test(status)) return "status-running";
+  if (/完成|就绪|completed|ok/i.test(status)) return "status-ready";
+  return "status-muted";
+}
+
 export function Workbench() {
   const [strategies, setStrategies] = useState<StrategyTemplate[]>(FALLBACK_STRATEGIES);
   const [pools, setPools] = useState<StockPool[]>(FALLBACK_POOLS);
@@ -217,28 +224,48 @@ export function Workbench() {
 
   const status = actionStatus ?? loadStatus;
   const error = actionError ?? loadError;
+  const tone = statusTone(status, error);
 
   return (
     <section className="workbench">
-      <StrategyPanel
-        strategies={strategies}
-        pools={pools}
-        config={config}
-        onConfigChange={setConfig}
-        onRun={handleRun}
-        onUpload={handleUpload}
-        onCreatePool={handleCreatePool}
-      />
-      <section className="result-panel">
-        <header className="result-header">
-          <h2>回测结果</h2>
-          <p className="status-line">{status}</p>
-        </header>
-        {error ? <p className="error-text">{error}</p> : null}
-        <ResultSummary metrics={result?.result?.metrics} />
-        <Charts result={result} />
-        <Tables result={result} />
-      </section>
+      <header className="app-header">
+        <div className="brand-stack">
+          <span className="eyebrow">A 股策略实验室</span>
+          <h1>A Share Quant Lab</h1>
+          <p>Cinematic strategy workbench</p>
+        </div>
+        <div className="header-status" aria-label="工作台状态">
+          <span className={`status-pill ${tone}`}>{status}</span>
+          <span className="context-chip">{config.pool_id}</span>
+          <span className="context-chip">
+            {config.start_date} / {config.end_date}
+          </span>
+        </div>
+      </header>
+      <div className="workbench-grid">
+        <StrategyPanel
+          strategies={strategies}
+          pools={pools}
+          config={config}
+          onConfigChange={setConfig}
+          onRun={handleRun}
+          onUpload={handleUpload}
+          onCreatePool={handleCreatePool}
+        />
+        <section className="result-panel">
+          <header className="result-header">
+            <div>
+              <span className="eyebrow">Mission Control</span>
+              <h2>回测结果</h2>
+            </div>
+          <p className={`status-line status-pill ${tone}`}>状态：{status}</p>
+          </header>
+          {error ? <p className="error-text" role="alert">{error}</p> : null}
+          <ResultSummary metrics={result?.result?.metrics} />
+          <Charts result={result} />
+          <Tables result={result} />
+        </section>
+      </div>
     </section>
   );
 }

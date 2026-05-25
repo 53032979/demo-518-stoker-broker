@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 import { Charts } from "../components/Charts";
 import type { BacktestResult } from "../types";
 
@@ -27,12 +27,29 @@ const result: BacktestResult = {
   },
 };
 
+afterEach(() => {
+  cleanup();
+});
+
 describe("Charts", () => {
+  it("renders polished empty chart states before a backtest run", () => {
+    render(<Charts />);
+
+    expect(screen.getByText("资金曲线")).toBeInTheDocument();
+    expect(screen.getByText("K线买卖点")).toBeInTheDocument();
+    expect(screen.getByText("运行回测后显示资金曲线")).toBeInTheDocument();
+    expect(screen.getByText("运行回测后显示K线买卖点")).toBeInTheDocument();
+  });
+
   it("renders SVG equity, drawdown, and trade marker visuals from result data", () => {
     const { container } = render(<Charts result={result} />);
 
     expect(screen.getByLabelText("资金曲线与回撤")).toBeInTheDocument();
     expect(screen.getByLabelText("价格与买卖点")).toBeInTheDocument();
+    expect(screen.getByText("权益曲线")).toBeInTheDocument();
+    expect(screen.getByText("回撤")).toBeInTheDocument();
+    expect(screen.getByText("买入")).toBeInTheDocument();
+    expect(screen.getByText("卖出")).toBeInTheDocument();
     expect(container.querySelector('[data-series="equity"]')).toBeInTheDocument();
     expect(container.querySelector('[data-series="drawdown"]')).toBeInTheDocument();
     expect(container.querySelectorAll('[data-candle="body"]')).toHaveLength(3);

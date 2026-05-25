@@ -161,6 +161,8 @@ describe("Workbench", () => {
 
     render(<Workbench />);
 
+    expect(screen.getByText("A Share Quant Lab")).toBeInTheDocument();
+    expect(screen.getByText("Cinematic strategy workbench")).toBeInTheDocument();
     expect(screen.getByText("策略配置")).toBeInTheDocument();
     expect(screen.getByText("回测结果")).toBeInTheDocument();
     expect(await screen.findByText("动量 Top N")).toBeInTheDocument();

@@ -51,7 +51,10 @@ function DataTable({
   const visibleColumns = columns(rows, preferredColumns);
   return (
     <div className="table-card">
-      <h3>{title}</h3>
+      <header className="table-card-header">
+        <h3>{title}</h3>
+        <span>{rows.length === 1 ? "1 row" : `${rows.length} rows`}</span>
+      </header>
       <div className="table-scroll">
         <table aria-label={title}>
           <thead>

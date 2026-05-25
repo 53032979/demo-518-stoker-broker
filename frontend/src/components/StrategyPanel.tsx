@@ -85,6 +85,7 @@ export function StrategyPanel({ strategies, pools, config, onConfigChange, onRun
   const coversEntirePool = Boolean(
     pool?.symbols.length && Number.isFinite(topN) && topN >= pool.symbols.length,
   );
+  const hasCustomSymbols = serializeSymbols(customSymbols).length > 0;
 
   const updateConfig = (updates: Partial<StrategyRunConfig>) => {
     onConfigChange({ ...config, ...updates });
@@ -210,7 +211,11 @@ export function StrategyPanel({ strategies, pools, config, onConfigChange, onRun
 
   return (
     <aside className="control-panel">
-      <h2>策略配置</h2>
+      <header className="control-header">
+        <span className="eyebrow">Strategy Console</span>
+        <h2>策略配置</h2>
+        <p>选择模板、股票池和交易约束，然后运行日线级回测。</p>
+      </header>
       <label>
         策略模板
         <select aria-label="策略模板" value={config.strategy_id} onChange={(event) => handleStrategyChange(event.currentTarget.value)}>
@@ -314,11 +319,11 @@ export function StrategyPanel({ strategies, pools, config, onConfigChange, onRun
             onChange={(event) => setCustomSymbols(event.currentTarget.value)}
           />
         </label>
-        <button type="button" className="secondary-button" onClick={handleCreatePool}>
+        <button type="button" className="secondary-button" disabled={!hasCustomSymbols || !onCreatePool} onClick={handleCreatePool}>
           保存股票池
         </button>
       </div>
-      <label>
+      <label className="file-control">
         本地数据文件
         <input
           aria-label="本地数据文件"
@@ -330,7 +335,7 @@ export function StrategyPanel({ strategies, pools, config, onConfigChange, onRun
           }}
         />
       </label>
-      <button type="button" onClick={() => onRun(config)}>
+      <button type="button" className="run-button" onClick={() => onRun(config)}>
         运行回测
       </button>
     </aside>

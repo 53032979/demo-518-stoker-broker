@@ -114,6 +114,15 @@ function priceBars(result?: BacktestResult, symbol?: string) {
     .filter((bar): bar is { date: string; open: number; high: number; low: number; close: number } => Boolean(bar));
 }
 
+function EmptyChart({ title, children }: { title: string; children: string }) {
+  return (
+    <div className="chart-empty">
+      <strong>{title}</strong>
+      <span>{children}</span>
+    </div>
+  );
+}
+
 export function Charts({ result }: Props) {
   const equity = equityPoints(result);
   const drawdown = drawdownPoints(equity);
@@ -143,7 +152,17 @@ export function Charts({ result }: Props) {
 
   return (
     <section className="chart-grid">
-      <div className="chart-box">
+      <article className="chart-box">
+        <header className="chart-header">
+          <div>
+            <span className="eyebrow">Equity Monitor</span>
+            <h3>资金曲线</h3>
+          </div>
+          <div className="chart-legend" aria-label="资金曲线图例">
+            <span className="legend-item legend-equity">权益曲线</span>
+            <span className="legend-item legend-drawdown">回撤</span>
+          </div>
+        </header>
         {hasEquity ? (
           <svg aria-label="资金曲线与回撤" viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img">
             <line className="axis-line" x1={PADDING} y1={HEIGHT - PADDING} x2={WIDTH - PADDING} y2={HEIGHT - PADDING} />
@@ -155,10 +174,21 @@ export function Charts({ result }: Props) {
             </text>
           </svg>
         ) : (
-          "运行回测后显示资金曲线"
+          <EmptyChart title="等待回测数据">运行回测后显示资金曲线</EmptyChart>
         )}
-      </div>
-      <div className="chart-box">
+      </article>
+      <article className="chart-box">
+        <header className="chart-header">
+          <div>
+            <span className="eyebrow">Trade Tape</span>
+            <h3>K线买卖点</h3>
+          </div>
+          <div className="chart-legend" aria-label="K线图例">
+            <span className="legend-item legend-price">价格</span>
+            <span className="legend-item legend-buy">买入</span>
+            <span className="legend-item legend-sell">卖出</span>
+          </div>
+        </header>
         {hasPriceBars ? (
           <svg aria-label="价格与买卖点" viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img">
             <line className="axis-line" x1={PADDING} y1={HEIGHT - PADDING} x2={WIDTH - PADDING} y2={HEIGHT - PADDING} />
@@ -204,9 +234,9 @@ export function Charts({ result }: Props) {
             </text>
           </svg>
         ) : (
-          "运行回测后显示K线买卖点"
+          <EmptyChart title="等待成交轨迹">运行回测后显示K线买卖点</EmptyChart>
         )}
-      </div>
+      </article>
     </section>
   );
 }
